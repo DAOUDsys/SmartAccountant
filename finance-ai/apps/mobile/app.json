@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Finance AI",
+    "slug": "finance-ai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "finance-ai",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#101418"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

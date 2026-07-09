@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "moduleResolution": "Bundler",
+    "noEmitOnError": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@backend/*": ["apps/backend/src/*"],
+      "@finance-ai/config": ["packages/config/src/index.ts"],
+      "@finance-ai/config/*": ["packages/config/src/*"],
+      "@finance-ai/shared-types": ["packages/shared-types/src/index.ts"],
+      "@finance-ai/shared-types/*": ["packages/shared-types/src/*"],
+      "@finance-ai/ui": ["packages/ui/src/index.tsx"],
+      "@finance-ai/ui/*": ["packages/ui/src/*"],
+      "@finance-ai/utils": ["packages/utils/src/index.ts"],
+      "@finance-ai/utils/*": ["packages/utils/src/*"],
+      "@mobile/*": ["apps/mobile/src/*"]
+    },
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  }
+}
