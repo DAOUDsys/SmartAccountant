@@ -19,6 +19,12 @@
 - Add Conversation List screen.
 - Add Chat Thread screen.
 - Add local mock assistant response flow.
+- Add focused Vitest tests for local chat store behavior.
+- Add `CHAT_AI_BOUNDARY.md` for the future Chat UI to AI Orchestrator contract.
+- Verify `npm run test` passes from the repository root.
+- Add GitHub Actions CI for pushes and pull requests to `main`.
+- Add safe Prisma schema validation script for CI.
+- Verify CI commands locally from the repository root.
 - Fix Expo Router Metro runtime error for missing `expo-router/assets/logotype.png`.
 - Fix Expo Router Metro runtime error for missing `expo-linking`.
 - Add direct mobile dependencies for Expo Router peer modules.
@@ -50,19 +56,18 @@
 
 ## In Progress
 
-- No active Chat UI Sprint 1 blockers.
+- CI workflow is in place and ready for GitHub verification after push.
 
 ## Next Recommended Task
 
-- Add focused tests for chat store behavior before connecting the real backend or AI orchestrator.
-- Define the future API boundary between Chat UI and AI Orchestrator.
+- Authentication foundation and secure token storage.
+- Use `CHAT_AI_BOUNDARY.md` and `AI_CONTRACT.md` as the inputs before designing backend chat endpoints.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.
 - Run all workspace commands from the repository root; there is no longer a nested `finance-ai/` project directory.
 
 ## Next Engineering Support
 
 - Add Docker Compose for local PostgreSQL after chat UI runtime stability is fully verified.
-- Add CI workflow for install, lint, type-check, build, and Prisma validation.
 - Review npm audit findings and upgrade transitive dependency chains where compatible with Expo and Nest.
 
 ## Later

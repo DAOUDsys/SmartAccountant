@@ -25,8 +25,10 @@
     "typecheck:backend": "npm run typecheck --workspace @finance-ai/backend",
     "typecheck:mobile": "npm run typecheck --workspace @finance-ai/mobile",
     "lint": "eslint .",
+    "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prisma:validate": "npm run prisma:validate --workspace @finance-ai/backend",
     "prisma:generate": "npm run prisma:generate --workspace @finance-ai/backend",
     "prepare": "husky"
   },
@@ -49,6 +51,7 @@
     "npm-run-all": "^4.1.5",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^4.1.10"
   }
 }

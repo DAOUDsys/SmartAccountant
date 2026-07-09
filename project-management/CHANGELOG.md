@@ -2,6 +2,15 @@
 
 ## 0.1.5 - 2026-07-10
 
+### Added
+
+- Added Vitest as the minimal TypeScript logic test runner.
+- Added focused chat store tests for the local Zustand chat foundation.
+- Added `project-management/CHAT_AI_BOUNDARY.md` to define the future Chat UI and AI Orchestrator contract.
+- Added GitHub Actions `CI` workflow for pushes and pull requests to `main`.
+- Added Prisma schema validation script for CI.
+- Documented `npm run test` in the README scripts.
+
 ### Changed
 
 - Flattened the repository structure so `apps/`, `packages/`, `project-management/`, `docs/`, and root configuration files now live at the GitHub repository root instead of under `finance-ai/`.
@@ -11,6 +20,12 @@
 ### Verified
 
 - No backend, Prisma schema, AI provider, authentication, database, accounting logic, or application behavior was changed.
+- `npm run test` passes with 1 Vitest file and 10 tests.
+- `npm run lint` passes.
+- `npm run build` passes.
+- `npm run prisma:validate` passes with a dummy CI `DATABASE_URL`.
+- `npm run prisma:generate` passes with a dummy CI `DATABASE_URL`.
+- GitHub Actions workflow syntax was reviewed by inspection and will be verified by GitHub after push.
 
 ## 0.1.4 - 2026-07-09
 

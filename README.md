@@ -58,9 +58,15 @@ npm run dev
 - `npm run build` builds shared packages, builds the NestJS backend, and type-checks the Expo app.
 - `npm run typecheck` runs TypeScript checks across workspaces.
 - `npm run lint` runs ESLint across the monorepo.
+- `npm run test` runs the Vitest logic test suite.
 - `npm run format` formats source and documentation with Prettier.
 - `npm run format:check` verifies formatting.
+- `npm run prisma:validate` validates the Prisma schema without running migrations.
 - `npm run prisma:generate` generates Prisma Client from `apps/backend/prisma/schema.prisma`.
+
+## Continuous Integration
+
+GitHub Actions runs on pushes and pull requests to `main`. The `CI` workflow installs dependencies with `npm ci`, validates and generates Prisma Client with a dummy CI `DATABASE_URL`, then runs lint, build, and tests from the repository root.
 
 ## Folder Structure
 
