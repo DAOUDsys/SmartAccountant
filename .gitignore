@@ -1,9 +1,13 @@
 node_modules/
+apps/mobile/node_modules/
+apps/backend/node_modules/
 .npm-cache/
 .expo-home/
 dist/
 build/
 .expo/
+.expo-export-check/
+apps/mobile/.expo-export-check/
 .expo-shared/
 coverage/
 *.out

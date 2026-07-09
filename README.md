@@ -65,7 +65,7 @@ npm run dev
 ## Folder Structure
 
 ```text
-finance-ai/
+SmartAccountant/
   apps/
     backend/
       prisma/

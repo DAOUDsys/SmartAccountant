@@ -6,9 +6,12 @@ Foundation initialization and the frontend-only AI Accountant chat shell are com
 
 The latest work completed Android visual QA for Chat UI Sprint 1. The QA flow now waits for real UI text before capturing screenshots, retries past Expo Go loading states, and stores reviewed screenshot evidence under `project-management/screenshots/chat-ui`. Chat UI Sprint 1 is approved.
 
+Repository layout maintenance is also complete: the project files were moved out of the nested `finance-ai/` folder, so the GitHub repository root is now the npm workspace root.
+
 ## Completed
 
 - Created the `finance-ai` npm workspaces monorepo.
+- Flattened the repository layout so `apps/`, `packages/`, `project-management/`, `docs/`, and root tooling files live directly at the GitHub repository root.
 - Added Expo React Native app under `apps/mobile`.
 - Added NestJS backend under `apps/backend`.
 - Added Prisma configuration for PostgreSQL.

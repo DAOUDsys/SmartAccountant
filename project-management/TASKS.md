@@ -3,6 +3,7 @@
 ## Done
 
 - Initialize `finance-ai` monorepo.
+- Flatten repository structure so the GitHub repository root is the project root.
 - Configure npm workspaces for apps and packages.
 - Scaffold Expo mobile app.
 - Scaffold NestJS backend.
@@ -56,6 +57,7 @@
 - Add focused tests for chat store behavior before connecting the real backend or AI orchestrator.
 - Define the future API boundary between Chat UI and AI Orchestrator.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.
+- Run all workspace commands from the repository root; there is no longer a nested `finance-ai/` project directory.
 
 ## Next Engineering Support
 

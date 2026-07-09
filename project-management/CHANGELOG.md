@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.5 - 2026-07-10
+
+### Changed
+
+- Flattened the repository structure so `apps/`, `packages/`, `project-management/`, `docs/`, and root configuration files now live at the GitHub repository root instead of under `finance-ai/`.
+- Updated the README folder structure diagram and project-management notes to reflect the new root layout.
+- Expanded root ignore rules for workspace `node_modules`, Expo export output, environment files, build output, coverage, logs, and OS metadata.
+
+### Verified
+
+- No backend, Prisma schema, AI provider, authentication, database, accounting logic, or application behavior was changed.
+
 ## 0.1.4 - 2026-07-09
 
 ### Added
