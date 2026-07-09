@@ -25,6 +25,11 @@
 - Add GitHub Actions CI for pushes and pull requests to `main`.
 - Add safe Prisma schema validation script for CI.
 - Verify CI commands locally from the repository root.
+- Add backend authentication foundation with register, login, refresh, logout, and `/auth/me`.
+- Add Prisma auth schema for users and refresh tokens.
+- Add password hashing, hashed refresh-token rotation, JWT access tokens, auth guard, DTO validation, and environment validation.
+- Add mobile login/register screens, auth store, SecureStore token storage, API client, session restore, route guard, and logout.
+- Add focused backend and mobile auth tests.
 - Fix Expo Router Metro runtime error for missing `expo-router/assets/logotype.png`.
 - Fix Expo Router Metro runtime error for missing `expo-linking`.
 - Add direct mobile dependencies for Expo Router peer modules.
@@ -56,11 +61,13 @@
 
 ## In Progress
 
-- CI workflow is in place and ready for GitHub verification after push.
+- Authentication foundation is partially complete pending PostgreSQL migration execution and live auth endpoint/device QA.
 
 ## Next Recommended Task
 
-- Authentication foundation and secure token storage.
+- Run Prisma migration against a local PostgreSQL database and smoke-test auth endpoints.
+- Verify mobile login/register/session restore/logout on Android against the backend.
+- Add tenant-aware authorization design after auth endpoint QA is complete.
 - Use `CHAT_AI_BOUNDARY.md` and `AI_CONTRACT.md` as the inputs before designing backend chat endpoints.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.
 - Run all workspace commands from the repository root; there is no longer a nested `finance-ai/` project directory.

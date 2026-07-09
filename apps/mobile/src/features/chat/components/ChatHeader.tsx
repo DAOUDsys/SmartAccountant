@@ -1,14 +1,15 @@
-import { ArrowLeft, Bot, Settings } from '@tamagui/lucide-icons';
+import { ArrowLeft, Bot, LogOut, Settings } from '@tamagui/lucide-icons';
 import { Button, Circle, Paragraph, Text, XStack, YStack } from 'tamagui';
 
 interface ChatHeaderProps {
   onBack?: () => void;
+  onLogout?: () => void;
   onOpenSettings: () => void;
   subtitle?: string;
   title: string;
 }
 
-export function ChatHeader({ onBack, onOpenSettings, subtitle, title }: ChatHeaderProps) {
+export function ChatHeader({ onBack, onLogout, onOpenSettings, subtitle, title }: ChatHeaderProps) {
   return (
     <XStack
       alignItems="center"
@@ -45,14 +46,26 @@ export function ChatHeader({ onBack, onOpenSettings, subtitle, title }: ChatHead
           ) : null}
         </YStack>
       </XStack>
-      <Button
-        accessibilityLabel="Open chat settings"
-        chromeless
-        circular
-        icon={Settings}
-        onPress={onOpenSettings}
-        size="$3"
-      />
+      <XStack alignItems="center" space="$1">
+        {onLogout ? (
+          <Button
+            accessibilityLabel="Sign out"
+            chromeless
+            circular
+            icon={LogOut}
+            onPress={onLogout}
+            size="$3"
+          />
+        ) : null}
+        <Button
+          accessibilityLabel="Open chat settings"
+          chromeless
+          circular
+          icon={Settings}
+          onPress={onOpenSettings}
+          size="$3"
+        />
+      </XStack>
     </XStack>
   );
 }

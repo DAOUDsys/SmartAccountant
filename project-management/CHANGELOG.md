@@ -4,6 +4,13 @@
 
 ### Added
 
+- Added backend authentication foundation with register, login, refresh, logout, and current-user endpoints.
+- Added Prisma `User`, `RefreshToken`, and `UserRole` auth schema.
+- Added bcrypt password hashing, hashed refresh-token storage, JWT access tokens, refresh-token rotation, auth guard, DTO validation, and environment validation.
+- Added mobile login and register screens.
+- Added mobile auth Zustand store, typed auth API client, Expo SecureStore token storage, session restore, route guard, and logout.
+- Added focused backend and mobile auth tests.
+- Added safe auth environment examples for JWT secrets, token lifetimes, bcrypt rounds, and mobile API URL.
 - Added Vitest as the minimal TypeScript logic test runner.
 - Added focused chat store tests for the local Zustand chat foundation.
 - Added `project-management/CHAT_AI_BOUNDARY.md` to define the future Chat UI and AI Orchestrator contract.
@@ -19,13 +26,19 @@
 
 ### Verified
 
-- No backend, Prisma schema, AI provider, authentication, database, accounting logic, or application behavior was changed.
-- `npm run test` passes with 1 Vitest file and 10 tests.
+- No accounting, AI provider, chat persistence, inventory, reporting, PDF, budget, or goal logic was changed.
+- `npm run test` passes with 3 Vitest files and 17 tests.
 - `npm run lint` passes.
 - `npm run build` passes.
 - `npm run prisma:validate` passes with a dummy CI `DATABASE_URL`.
 - `npm run prisma:generate` passes with a dummy CI `DATABASE_URL`.
+- GitHub Actions CI was confirmed green for commit `4e57a1634d3d12707510b9a2d60751a8dfdef7f4` before auth work began.
 - GitHub Actions workflow syntax was reviewed by inspection and will be verified by GitHub after push.
+
+### Pending
+
+- Local PostgreSQL is not listening on `localhost:5432`, so Prisma migration execution and live auth endpoint smoke tests are pending local database setup.
+- Email verification, password reset, social login, organization/team membership, production secrets, and deployment configuration are not implemented yet.
 
 ## 0.1.4 - 2026-07-09
 

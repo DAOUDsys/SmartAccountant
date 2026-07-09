@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Foundation initialization and the frontend-only AI Accountant chat shell are complete. The current maintenance focus is stabilizing the approved Chat UI foundation before authentication, backend integration, or real AI orchestration begins.
+Foundation initialization, Chat UI Sprint 1, CI, and the authentication foundation code are in place. The current maintenance focus is completing authentication database migration execution and live endpoint/device QA before moving into tenant-aware product features.
 
 The latest work completed Android visual QA for Chat UI Sprint 1. The QA flow now waits for real UI text before capturing screenshots, retries past Expo Go loading states, and stores reviewed screenshot evidence under `project-management/screenshots/chat-ui`. Chat UI Sprint 1 is approved.
 
@@ -11,6 +11,8 @@ Repository layout maintenance is also complete: the project files were moved out
 The latest stabilization work added focused Vitest coverage for the local Zustand chat store and created `CHAT_AI_BOUNDARY.md` to define the future contract between the Chat UI and AI Orchestrator.
 
 CI tooling is now in place through GitHub Actions. The `CI` workflow runs on pushes and pull requests to `main` and validates install, Prisma schema/client generation, lint, build, and tests from the repository root.
+
+Authentication foundation implementation is partially complete. Backend auth module, Prisma auth schema, hashed password storage, hashed refresh-token rotation, JWT access tokens, auth guards, DTO validation, mobile login/register screens, SecureStore token persistence, session restore, route guard, logout, and focused auth tests are implemented. Local PostgreSQL is not available on `localhost:5432`, so migration execution and live endpoint smoke tests remain pending.
 
 ## Completed
 
@@ -27,6 +29,11 @@ CI tooling is now in place through GitHub Actions. The `CI` workflow runs on pus
 - Added `PRODUCT_SPEC.md` and `AI_CONTRACT.md` for the AI-first accounting product direction.
 - Added `CHAT_AI_BOUNDARY.md` to define the future Chat UI and AI Orchestrator integration boundary.
 - Added GitHub Actions CI for root workspace validation on pushes and pull requests to `main`.
+- Added backend authentication foundation with register, login, refresh, logout, and current-user endpoints.
+- Added Prisma `User`, `RefreshToken`, and `UserRole` auth schema.
+- Added bcrypt password hashing, hashed refresh-token storage, JWT access tokens, refresh-token rotation, auth guard, DTO validation, and environment validation.
+- Added mobile authentication foundation with login/register screens, auth Zustand store, Expo SecureStore token storage, API auth client, session restore, route guard, and logout.
+- Added focused backend and mobile auth tests.
 - Implemented the frontend-only Chat UI as the primary mobile app surface.
 - Added Expo Router routes for the conversation list and chat thread.
 - Added local Zustand chat state for conversations, messages, drafts, typing, streaming, retry, and settings.
@@ -103,6 +110,19 @@ Secondary issues found during validation:
 - `apps/mobile/src/features/chat/store/chat.store.test.ts`
 - `.github/workflows/ci.yml`
 - `apps/backend/package.json`
+- `.env.example`
+- `apps/backend/prisma/schema.prisma`
+- `apps/backend/src/app/app.module.ts`
+- `apps/backend/src/config/app.config.ts`
+- `apps/backend/src/features/auth/**`
+- `apps/mobile/app/auth/**`
+- `apps/mobile/app/_layout.tsx`
+- `apps/mobile/app.json`
+- `apps/mobile/package.json`
+- `apps/mobile/src/features/auth/**`
+- `apps/mobile/src/features/chat/components/ChatHeader.tsx`
+- `apps/mobile/src/features/chat/screens/ConversationListScreen.tsx`
+- `vitest.config.ts`
 - `project-management/CHAT_AI_BOUNDARY.md`
 - `project-management/PROJECT_STATUS.md`
 - `project-management/TASKS.md`
@@ -116,9 +136,11 @@ Secondary issues found during validation:
 - `npx @tamagui/cli check`: passing with `Tamagui dependencies look good`.
 - `npm run lint`: passing.
 - `npm run build`: passing.
-- `npm run test`: passing, 1 Vitest file and 10 tests.
+- `npm run test`: passing, 3 Vitest files and 17 tests.
 - `npm run prisma:validate`: passing with dummy CI `DATABASE_URL`.
 - `npm run prisma:generate`: passing with dummy CI `DATABASE_URL`.
+- GitHub Actions CI for commit `4e57a1634d3d12707510b9a2d60751a8dfdef7f4`: green before auth implementation began.
+- Local PostgreSQL availability check: `localhost:5432` is not listening, so Prisma migration execution and live auth endpoint smoke tests are pending local DB setup.
 - GitHub Actions workflow syntax was reviewed by inspection; the workflow will be fully verified by GitHub after push.
 - `npx expo export --platform android --output-dir .expo-export-check`: passing.
 - Source search for `$gray5`: no remaining matches in `apps/mobile/src` or `packages`.
@@ -129,13 +151,15 @@ Secondary issues found during validation:
 ## Known Limitations
 
 - Chat responses are local mock responses only.
+- Authentication foundation is not fully QA-approved until a PostgreSQL migration is created/executed and register/login/refresh/logout/me are smoke-tested against a real local database.
+- No email verification, forgot/reset password, social login, organization/team membership, production secrets, or deployment environment exists yet.
 - Chat store tests cover local Zustand logic only; React Native component and emulator flows remain covered by manual/visual QA, not automated UI tests.
 - The Chat/AI boundary is documentation only; no backend endpoint, AI provider call, tool execution, or persistence layer was implemented.
 - CI does not run Android emulator, Expo Go, backend services, migrations, AI providers, or a real database connection.
 - Voice input button is UI-only and does not request permissions or record audio.
 - Attachment button is a UI placeholder and does not open a file picker.
 - Chat settings are local UI controls only; only clearing the current conversation changes local state.
-- No backend, AI provider, tool calling, authentication, Prisma, database, or accounting logic is connected.
+- Chat messages are not connected to backend persistence, AI provider calls, tool calling, Prisma accounting models, or accounting logic.
 - The available Android emulator is slow. Future QA should keep the longer explicit waits, UI text readiness checks, and overlay retry logic.
 - Expo Go still reports `2.32.19` even after the SDK 52 `Expo-Go-2.32.20.apk` reinstall attempt, but this did not block the final approved Expo Go QA run.
 - The `$gray5` warning source was removed from the app source. Latest Android logs from the offline launch do not show the `$gray5` warning.
@@ -143,4 +167,4 @@ Secondary issues found during validation:
 
 ## Scope Guardrails
 
-Authentication foundation and secure token storage are the next recommended product task. Accounting workflows, bank connections, AI model orchestration implementation, Prisma schema changes, database migrations, and production deployment automation remain outside this CI/tooling task.
+Next recommended task: complete authentication migration and endpoint/device QA with a local PostgreSQL service, then move to tenant-aware authorization. Accounting workflows, bank connections, AI model orchestration implementation, accounting database models, and production deployment automation remain outside this auth foundation task.

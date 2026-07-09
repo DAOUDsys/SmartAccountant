@@ -29,6 +29,16 @@ Create a local environment file:
 cp .env.example .env
 ```
 
+Set secure local values for the authentication secrets in `.env` before starting the backend:
+
+```bash
+JWT_ACCESS_SECRET="use-a-long-random-local-secret"
+JWT_REFRESH_SECRET="use-a-different-long-random-local-secret"
+JWT_ACCESS_EXPIRES_IN="15m"
+JWT_REFRESH_EXPIRES_IN="30d"
+BCRYPT_ROUNDS=12
+```
+
 Generate the Prisma client:
 
 ```bash
@@ -63,6 +73,12 @@ npm run dev
 - `npm run format:check` verifies formatting.
 - `npm run prisma:validate` validates the Prisma schema without running migrations.
 - `npm run prisma:generate` generates Prisma Client from `apps/backend/prisma/schema.prisma`.
+
+## Authentication
+
+The backend exposes an authentication foundation at `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/me`. Passwords are hashed with bcrypt and refresh tokens are stored only as hashes.
+
+The mobile app includes login and registration screens, restores sessions on launch, stores tokens with Expo SecureStore, and gates the approved Chat UI behind authentication. Configure `EXPO_PUBLIC_API_URL` for the mobile app to point at the backend.
 
 ## Continuous Integration
 

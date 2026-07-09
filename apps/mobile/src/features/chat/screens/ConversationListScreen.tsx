@@ -6,6 +6,7 @@ import { Button, H1, Input, Paragraph, Text, XStack, YStack } from 'tamagui';
 import { ChatHeader } from '../components/ChatHeader';
 import { ConversationListEmptyState } from '../components/ChatEmptyState';
 import { ConversationCard } from '../components/ConversationCard';
+import { useAuthStore } from '../../auth';
 import { useChatStore } from '../store/chat.store';
 
 export function ConversationListScreen() {
@@ -15,6 +16,7 @@ export function ConversationListScreen() {
   const conversations = useChatStore((state) => state.conversations);
   const createConversation = useChatStore((state) => state.createConversation);
   const setActiveConversation = useChatStore((state) => state.setActiveConversation);
+  const logout = useAuthStore((state) => state.logout);
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -49,6 +51,7 @@ export function ConversationListScreen() {
   return (
     <YStack backgroundColor="$background" flex={1}>
       <ChatHeader
+        onLogout={() => void logout()}
         onOpenSettings={handleCreateConversation}
         subtitle="Chat-first accounting workspace"
         title="AI Accountant"
