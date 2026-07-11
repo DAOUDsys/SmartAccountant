@@ -4,6 +4,18 @@ import { clearTokens, getStoredTokens, saveTokens } from '../services/token-stor
 import { useAuthStore } from './auth.store';
 import type { AuthResponse } from '../types/auth.types';
 
+const businessStoreActions = {
+  clearActiveBusiness: vi.fn(),
+  hydrateFromAuthContext: vi.fn(),
+  loadBusinesses: vi.fn(),
+};
+
+vi.mock('../../businesses', () => ({
+  useBusinessStore: {
+    getState: () => businessStoreActions,
+  },
+}));
+
 vi.mock('../services/auth.api', () => ({
   authApi: {
     login: vi.fn(),
@@ -49,6 +61,9 @@ describe('auth store', () => {
     vi.mocked(clearTokens).mockReset();
     vi.mocked(getStoredTokens).mockReset();
     vi.mocked(saveTokens).mockReset();
+    businessStoreActions.clearActiveBusiness.mockReset();
+    businessStoreActions.hydrateFromAuthContext.mockReset();
+    businessStoreActions.loadBusinesses.mockReset();
   });
 
   afterEach(() => {
@@ -66,6 +81,7 @@ describe('auth store', () => {
     const state = useAuthStore.getState();
 
     expect(saveTokens).toHaveBeenCalledWith(authResponse.tokens);
+    expect(businessStoreActions.loadBusinesses).toHaveBeenCalledWith('access-token');
     expect(state.status).toBe('authenticated');
     expect(state.user?.email).toBe('daoud@example.com');
     expect(state.accessToken).toBe('access-token');
@@ -83,6 +99,7 @@ describe('auth store', () => {
 
     expect(authApi.refresh).toHaveBeenCalledWith('refresh-token');
     expect(saveTokens).toHaveBeenCalledWith(authResponse.tokens);
+    expect(businessStoreActions.loadBusinesses).toHaveBeenCalledWith('access-token');
     expect(useAuthStore.getState().status).toBe('authenticated');
   });
 
@@ -98,6 +115,7 @@ describe('auth store', () => {
     await useAuthStore.getState().logout();
 
     expect(clearTokens).toHaveBeenCalled();
+    expect(businessStoreActions.clearActiveBusiness).toHaveBeenCalled();
     expect(useAuthStore.getState().status).toBe('unauthenticated');
     expect(useAuthStore.getState().user).toBeUndefined();
   });

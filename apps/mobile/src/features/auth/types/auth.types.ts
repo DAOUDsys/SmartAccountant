@@ -1,3 +1,5 @@
+import type { BusinessWithMembership } from '../../businesses';
+
 export interface AuthUser {
   createdAt: string;
   displayName?: string;
@@ -13,6 +15,7 @@ export interface AuthTokens {
 }
 
 export interface AuthResponse {
+  businessContext?: BusinessWithMembership;
   tokens: AuthTokens;
   user: AuthUser;
 }

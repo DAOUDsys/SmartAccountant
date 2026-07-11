@@ -1,5 +1,9 @@
-import { LoginScreen } from '../../src/features/auth';
+import { GuestRoute, LoginScreen } from '../../src/features/auth';
 
 export default function LoginRoute() {
-  return <LoginScreen />;
+  return (
+    <GuestRoute>
+      <LoginScreen />
+    </GuestRoute>
+  );
 }

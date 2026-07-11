@@ -1,7 +1,14 @@
 import { create } from 'zustand';
+import { useBusinessStore } from '../../businesses';
 import { authApi } from '../services/auth.api';
 import { clearTokens, getStoredTokens, saveTokens } from '../services/token-storage';
-import type { AuthTokens, AuthUser, LoginInput, RegisterInput } from '../types/auth.types';
+import type {
+  AuthResponse,
+  AuthTokens,
+  AuthUser,
+  LoginInput,
+  RegisterInput,
+} from '../types/auth.types';
 
 type AuthStatus = 'authenticated' | 'restoring' | 'unauthenticated';
 
@@ -34,6 +41,13 @@ function authenticatedState(user: AuthUser, tokens: AuthTokens) {
   };
 }
 
+async function syncActiveBusiness(response: AuthResponse) {
+  const businessStore = useBusinessStore.getState();
+
+  await businessStore.hydrateFromAuthContext(response.businessContext);
+  await businessStore.loadBusinesses(response.tokens.accessToken);
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   status: 'restoring',
@@ -46,6 +60,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await authApi.login(input);
       await saveTokens(response.tokens);
+      await syncActiveBusiness(response);
       set(authenticatedState(response.user, response.tokens));
     } catch (error) {
       set({
@@ -68,6 +83,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     await clearTokens();
+    await useBusinessStore.getState().clearActiveBusiness();
     set({
       accessToken: undefined,
       error: undefined,
@@ -84,6 +100,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await authApi.register(input);
       await saveTokens(response.tokens);
+      await syncActiveBusiness(response);
       set(authenticatedState(response.user, response.tokens));
     } catch (error) {
       set({
@@ -106,6 +123,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const user = await authApi.me(storedTokens.accessToken);
+      await useBusinessStore.getState().loadBusinesses(storedTokens.accessToken);
       set(
         authenticatedState(user, {
           accessToken: storedTokens.accessToken,
@@ -117,10 +135,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         const response = await authApi.refresh(storedTokens.refreshToken);
         await saveTokens(response.tokens);
+        await syncActiveBusiness(response);
         set(authenticatedState(response.user, response.tokens));
         return;
       } catch {
         await clearTokens();
+        await useBusinessStore.getState().clearActiveBusiness();
       }
     }
 

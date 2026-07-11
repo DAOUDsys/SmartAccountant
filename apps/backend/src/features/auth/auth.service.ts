@@ -7,13 +7,28 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import type { User } from '@prisma/client';
+import {
+  BusinessMemberStatus,
+  BusinessRole,
+  type Business,
+  type BusinessMember,
+  type User,
+} from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
+import { createDefaultAccountsForBusiness } from '../accounts';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
-import type { AuthResponse, AuthTokens, SafeUser } from './types/auth.types';
+import type {
+  AuthBusiness,
+  AuthBusinessContext,
+  AuthBusinessMembership,
+  AuthResponse,
+  AuthTokens,
+  SafeUser,
+} from './types/auth.types';
 
 interface RequestMetadata {
   ipAddress?: string;
@@ -81,19 +96,38 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, this.getBcryptRounds());
-    const user = await this.prisma.user.create({
-      data: {
-        displayName: dto.displayName?.trim() || undefined,
-        email,
-        passwordHash,
-      },
-    });
-    const tokens = await this.issueTokenPair(user, metadata);
 
-    return {
-      tokens,
-      user: this.toSafeUser(user),
-    };
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          displayName: dto.displayName?.trim() || undefined,
+          email,
+          passwordHash,
+        },
+      });
+      const business = await tx.business.create({
+        data: {
+          name: this.getDefaultBusinessName(user.displayName),
+          ownerId: user.id,
+        },
+      });
+      await createDefaultAccountsForBusiness(tx, business.id);
+      const membership = await tx.businessMember.create({
+        data: {
+          businessId: business.id,
+          role: BusinessRole.OWNER,
+          status: BusinessMemberStatus.ACTIVE,
+          userId: user.id,
+        },
+      });
+      const tokens = await this.issueTokenPair(user, metadata, tx);
+
+      return {
+        businessContext: this.toAuthBusinessContext(business, membership),
+        tokens,
+        user: this.toSafeUser(user),
+      };
+    });
   }
 
   async login(dto: LoginDto, metadata: RequestMetadata): Promise<AuthResponse> {
@@ -115,6 +149,7 @@ export class AuthService {
     const tokens = await this.issueTokenPair(user, metadata);
 
     return {
+      businessContext: await this.getDefaultBusinessContext(user.id),
       tokens,
       user: this.toSafeUser(user),
     };
@@ -144,6 +179,7 @@ export class AuthService {
     const tokens = await this.issueTokenPair(storedToken.user, metadata);
 
     return {
+      businessContext: await this.getDefaultBusinessContext(storedToken.user.id),
       tokens,
       user: this.toSafeUser(storedToken.user),
     };
@@ -189,14 +225,82 @@ export class AuthService {
     };
   }
 
-  private async issueTokenPair(user: User, metadata: RequestMetadata): Promise<AuthTokens> {
+  private toAuthBusiness(business: Business): AuthBusiness {
+    return {
+      createdAt: business.createdAt.toISOString(),
+      currency: business.currency,
+      id: business.id,
+      legalName: business.legalName ?? undefined,
+      locale: business.locale,
+      name: business.name,
+      ownerId: business.ownerId,
+      timezone: business.timezone,
+      updatedAt: business.updatedAt.toISOString(),
+    };
+  }
+
+  private toAuthBusinessMembership(membership: BusinessMember): AuthBusinessMembership {
+    return {
+      businessId: membership.businessId,
+      createdAt: membership.createdAt.toISOString(),
+      id: membership.id,
+      role: membership.role,
+      status: membership.status,
+      updatedAt: membership.updatedAt.toISOString(),
+      userId: membership.userId,
+    };
+  }
+
+  private toAuthBusinessContext(
+    business: Business,
+    membership: BusinessMember,
+  ): AuthBusinessContext {
+    return {
+      business: this.toAuthBusiness(business),
+      membership: this.toAuthBusinessMembership(membership),
+    };
+  }
+
+  private async getDefaultBusinessContext(
+    userId: string,
+  ): Promise<AuthBusinessContext | undefined> {
+    const membership = await this.prisma.businessMember.findFirst({
+      include: { business: true },
+      orderBy: { createdAt: 'asc' },
+      where: {
+        status: BusinessMemberStatus.ACTIVE,
+        userId,
+        business: {
+          deletedAt: null,
+        },
+      },
+    });
+
+    if (!membership) {
+      return undefined;
+    }
+
+    return this.toAuthBusinessContext(membership.business, membership);
+  }
+
+  private getDefaultBusinessName(displayName?: string | null) {
+    const name = displayName?.trim();
+
+    return name ? `${name}'s Business` : 'My Business';
+  }
+
+  private async issueTokenPair(
+    user: User,
+    metadata: RequestMetadata,
+    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<AuthTokens> {
     const accessToken = await this.signAccessToken(user);
     const refreshToken = randomBytes(48).toString('base64url');
     const refreshExpiresInSeconds = parseDurationSeconds(
       this.configService.getOrThrow<string>('auth.jwtRefreshExpiresIn'),
     );
 
-    await this.prisma.refreshToken.create({
+    await prisma.refreshToken.create({
       data: {
         expiresAt: addSeconds(new Date(), refreshExpiresInSeconds),
         ipAddress: metadata.ipAddress,

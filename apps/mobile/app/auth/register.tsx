@@ -1,5 +1,9 @@
-import { RegisterScreen } from '../../src/features/auth';
+import { GuestRoute, RegisterScreen } from '../../src/features/auth';
 
 export default function RegisterRoute() {
-  return <RegisterScreen />;
+  return (
+    <GuestRoute>
+      <RegisterScreen />
+    </GuestRoute>
+  );
 }

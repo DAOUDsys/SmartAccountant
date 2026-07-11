@@ -12,18 +12,134 @@ enum UserRole {
   ADMIN
 }
 
+enum BusinessRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  STAFF
+  VIEWER
+}
+
+enum BusinessMemberStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REMOVED
+}
+
+enum TransactionType {
+  SALE
+  EXPENSE
+  PURCHASE
+  CUSTOMER_PAYMENT
+  SUPPLIER_PAYMENT
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum AccountMappingKey {
+  CASH
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  SALES_REVENUE
+  COST_OF_GOODS_SOLD
+  INVENTORY_ASSET
+  GENERAL_EXPENSE
+  OWNER_EQUITY
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  PENDING
+  POSTED
+  VOIDED
+  REVERSED
+}
+
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  passwordHash String
-  displayName  String?
-  role         UserRole       @default(USER)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  deletedAt    DateTime?
-  refreshTokens RefreshToken[]
+  id                       String           @id @default(uuid())
+  email                    String           @unique
+  passwordHash             String
+  displayName              String?
+  role                     UserRole         @default(USER)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  deletedAt                DateTime?
+  refreshTokens            RefreshToken[]
+  businessesOwned          Business[]       @relation("BusinessOwner")
+  businessMemberships      BusinessMember[] @relation("BusinessMemberUser")
+  businessInvitationsSent  BusinessMember[] @relation("BusinessMemberInviter")
+  transactionsCreated      Transaction[]    @relation("TransactionCreator")
+  journalEntriesCreated    JournalEntry[]   @relation("JournalEntryCreator")
+  journalEntriesVoided     JournalEntry[]   @relation("JournalEntryVoider")
 
   @@index([deletedAt])
+}
+
+model Business {
+  id               String            @id @default(uuid())
+  name             String
+  legalName        String?
+  currency         String            @default("USD")
+  locale           String            @default("en")
+  timezone         String            @default("UTC")
+  ownerId          String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  owner            User              @relation("BusinessOwner", fields: [ownerId], references: [id])
+  members          BusinessMember[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  products         Product[]
+  transactions     Transaction[]
+  transactionLines TransactionLine[]
+  transactionAdjustmentLines TransactionAdjustmentLine[]
+  accounts         Account[]
+  accountMappings  AccountMapping[]
+  journalEntries   JournalEntry[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model BusinessMember {
+  id          String               @id @default(uuid())
+  businessId  String
+  userId      String
+  role        BusinessRole
+  status      BusinessMemberStatus @default(ACTIVE)
+  invitedById String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  business    Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user        User                 @relation("BusinessMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy   User?                @relation("BusinessMemberInviter", fields: [invitedById], references: [id])
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+  @@index([role])
+  @@index([status])
+  @@index([businessId, status])
 }
 
 model RefreshToken {
@@ -41,4 +157,225 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+model Customer {
+  id           String        @id @default(uuid())
+  businessId   String
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([businessId])
+  @@index([deletedAt])
+  @@index([businessId, deletedAt])
+}
+
+model Supplier {
+  id           String        @id @default(uuid())
+  businessId   String
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([businessId])
+  @@index([deletedAt])
+  @@index([businessId, deletedAt])
+}
+
+model Product {
+  id             String            @id @default(uuid())
+  businessId     String
+  name           String
+  sku            String?
+  description    String?
+  unitPrice      Decimal           @db.Decimal(12, 2)
+  costPrice      Decimal?          @db.Decimal(12, 2)
+  quantityOnHand Decimal           @default(0) @db.Decimal(14, 3)
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactionLines TransactionLine[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@index([deletedAt])
+  @@index([businessId, deletedAt])
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  businessId      String
+  type            TransactionType
+  status          TransactionStatus @default(DRAFT)
+  transactionDate DateTime
+  description     String?
+  adjustmentReason String?
+  customerId      String?
+  supplierId      String?
+  totalAmount     Decimal           @db.Decimal(12, 2)
+  currency        String
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer        Customer?         @relation(fields: [customerId], references: [id])
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
+  createdBy       User              @relation("TransactionCreator", fields: [createdById], references: [id])
+  lines           TransactionLine[]
+  adjustmentLines TransactionAdjustmentLine[]
+  journalEntries  JournalEntry[]    @relation("JournalEntrySourceTransaction")
+
+  @@index([businessId])
+  @@index([createdById])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([transactionDate])
+  @@index([deletedAt])
+  @@index([businessId, deletedAt])
+}
+
+model TransactionLine {
+  id            String      @id @default(uuid())
+  businessId    String
+  transactionId String
+  productId     String?
+  description   String
+  quantity      Decimal     @db.Decimal(14, 3)
+  unitPrice     Decimal     @db.Decimal(12, 2)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product       Product?    @relation(fields: [productId], references: [id])
+
+  @@index([businessId])
+  @@index([transactionId])
+  @@index([productId])
+}
+
+model TransactionAdjustmentLine {
+  id            String      @id @default(uuid())
+  businessId    String
+  transactionId String
+  accountId     String
+  debitAmount   Decimal     @default(0) @db.Decimal(12, 2)
+  creditAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  description   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account       Account     @relation(fields: [accountId], references: [id])
+
+  @@index([businessId])
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([businessId, transactionId])
+}
+
+model Account {
+  id              String           @id @default(uuid())
+  businessId      String
+  code            String
+  name            String
+  type            AccountType
+  normalBalance   NormalBalance
+  parentId        String?
+  isSystem        Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent          Account?         @relation("AccountParent", fields: [parentId], references: [id])
+  children        Account[]        @relation("AccountParent")
+  accountMappings AccountMapping[]
+  journalLines    JournalLine[]
+  adjustmentLines TransactionAdjustmentLine[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@index([businessId, type])
+  @@index([businessId, deletedAt])
+  @@index([parentId])
+}
+
+model AccountMapping {
+  id         String            @id @default(uuid())
+  businessId String
+  key        AccountMappingKey
+  accountId  String
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  account    Account           @relation(fields: [accountId], references: [id])
+
+  @@unique([businessId, key])
+  @@index([businessId])
+  @@index([accountId])
+}
+
+model JournalEntry {
+  id                  String             @id @default(uuid())
+  businessId          String
+  sourceTransactionId String?
+  postingDate         DateTime
+  description         String
+  status              JournalEntryStatus @default(DRAFT)
+  idempotencyKey      String
+  createdById         String
+  postedAt            DateTime?
+  voidedAt            DateTime?
+  voidedById          String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+  business            Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sourceTransaction   Transaction?       @relation("JournalEntrySourceTransaction", fields: [sourceTransactionId], references: [id])
+  createdBy           User               @relation("JournalEntryCreator", fields: [createdById], references: [id])
+  voidedBy            User?              @relation("JournalEntryVoider", fields: [voidedById], references: [id])
+  lines               JournalLine[]
+
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([sourceTransactionId])
+  @@index([deletedAt])
+}
+
+model JournalLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  debitAmount    Decimal      @default(0) @db.Decimal(12, 2)
+  creditAmount   Decimal      @default(0) @db.Decimal(12, 2)
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account        Account      @relation(fields: [accountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([accountId])
 }

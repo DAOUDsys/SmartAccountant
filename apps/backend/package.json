@@ -9,6 +9,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"prisma/**/*.prisma\"",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
+    "accounts:backfill-defaults": "ts-node -r tsconfig-paths/register src/scripts/backfill-default-accounts.ts",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit"

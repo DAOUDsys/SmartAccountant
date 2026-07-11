@@ -7,6 +7,7 @@ import { ChatHeader } from '../components/ChatHeader';
 import { ConversationListEmptyState } from '../components/ChatEmptyState';
 import { ConversationCard } from '../components/ConversationCard';
 import { useAuthStore } from '../../auth';
+import { useBusinessStore } from '../../businesses';
 import { useChatStore } from '../store/chat.store';
 
 export function ConversationListScreen() {
@@ -17,6 +18,7 @@ export function ConversationListScreen() {
   const createConversation = useChatStore((state) => state.createConversation);
   const setActiveConversation = useChatStore((state) => state.setActiveConversation);
   const logout = useAuthStore((state) => state.logout);
+  const activeBusinessName = useBusinessStore((state) => state.activeBusiness?.business.name);
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -53,7 +55,7 @@ export function ConversationListScreen() {
       <ChatHeader
         onLogout={() => void logout()}
         onOpenSettings={handleCreateConversation}
-        subtitle="Chat-first accounting workspace"
+        subtitle={activeBusinessName ?? 'Chat-first accounting workspace'}
         title="AI Accountant"
       />
 

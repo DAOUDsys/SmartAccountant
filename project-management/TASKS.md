@@ -30,6 +30,143 @@
 - Add password hashing, hashed refresh-token rotation, JWT access tokens, auth guard, DTO validation, and environment validation.
 - Add mobile login/register screens, auth store, SecureStore token storage, API client, session restore, route guard, and logout.
 - Add focused backend and mobile auth tests.
+- Fix Expo Router root-layout navigation error after adding authentication.
+- Add Docker Compose local PostgreSQL service for `smartaccountant_dev`.
+- Create and apply Prisma migration `20260709234821_init_auth`.
+- Smoke-test live backend auth endpoints against local PostgreSQL.
+- Reproduce Android auth QA launch failure on `Pixel_9_API_35`.
+- Capture Android auth QA evidence for unauthenticated login and register screens.
+- Install `expo-dev-client@~5.0.20` as the prepared fallback path for Expo development builds.
+- Remove temporary generated native Android prebuild files after the failed dev-build attempt to keep the project in managed Expo mode.
+- Complete Android mobile auth QA on the rebooted `Pixel_9_API_35` emulator against the live backend.
+- Verify mobile registration for `mobileqa@example.com` enters the authenticated Chat UI.
+- Verify mobile logout clears local session state and returns to login.
+- Verify invalid login shows `Invalid email or password.` without crashing.
+- Verify valid login returns to the authenticated Chat UI.
+- Verify force-stop/relaunch restores the authenticated session.
+- Verify duplicate registration shows `An account with this email already exists.` without crashing.
+- Capture approved auth QA screenshots for login, register, authenticated Chat UI, invalid login, duplicate registration, logout return, and session restore.
+- Approve Authentication Foundation.
+- Create `TENANCY_AUTHORIZATION.md` as the source of truth for future tenant-aware authorization.
+- Define the future business/tenant model, membership model, role permissions, data isolation rules, backend authorization rules, mobile active business behavior, AI tool authorization rules, security risks, and implementation phases.
+- Add `Business`, `BusinessMember`, `BusinessRole`, and `BusinessMemberStatus` to Prisma.
+- Create and apply Prisma migration `20260710151650_add_tenancy_foundation`.
+- Update registration to create a default business and ACTIVE OWNER membership in a transaction.
+- Add backend businesses module with list, create, active/default, detail, members, and simple existing-user member add endpoints.
+- Add `BusinessMembershipGuard`, `RequireBusinessRole`, `CurrentBusiness`, and business permission helpers.
+- Add mobile business types, business API client, SecureStore-backed active business id, active business Zustand store, and auth-store business loading/clearing.
+- Add focused backend and mobile tests for tenancy registration, business scoping, role checks, guard denial, active business selection, and logout clearing.
+- Smoke-test tenant registration, default business creation, OWNER membership creation, business listing, active/default business, and cross-tenant 403 denial.
+- Add tenant-scoped Prisma models for customers, suppliers, products, transactions, and transaction lines.
+- Create and apply Prisma migration `20260710222110_add_accounting_foundation`.
+- Extend business permissions with customer, supplier, product, and transaction read/manage/create/update/void permissions.
+- Add guarded tenant-scoped customer endpoints for list, detail, create, update, and soft delete.
+- Add guarded tenant-scoped supplier endpoints for list, detail, create, update, and soft delete.
+- Add guarded tenant-scoped product endpoints for list, detail, create, update, and soft delete.
+- Add guarded tenant-scoped transaction endpoints for list, detail, create, draft update, and void.
+- Verify transaction customer, supplier, and product references belong to the same business before creation or update.
+- Add minimal mobile accounting response types and read-only API methods.
+- Add focused backend tests for tenant filtering, soft deletes, permissions, related-id isolation, SKU uniqueness, transaction creation, and voiding.
+- Smoke-test customer, supplier, product, sale transaction creation, cross-tenant 403 denial, tenant-scoped lists, and transaction voiding against Docker PostgreSQL.
+- Create `ACCOUNTING_ENGINE_BOUNDARY.md` as the source of truth for converting transaction-intent records into future postings, journal entries, inventory movements, audit events, and safe AI tool results.
+- Define future chart of accounts, account, journal entry, journal line, inventory movement, and audit log model designs without implementation.
+- Define posting rules, lifecycle, idempotency, void/reversal rules, inventory boundary, tenant isolation, permissions, AI tool boundary, validation, error handling, implementation phases, and future acceptance criteria.
+- Add tenant-scoped `Account` and `AccountMapping` Prisma models.
+- Add `AccountType`, `NormalBalance`, and `AccountMappingKey` enums.
+- Create and apply Prisma migration `20260710231017_add_chart_of_accounts`.
+- Create idempotent default system accounts for each new business.
+- Create default mappings for Cash, Accounts Receivable, Accounts Payable, Sales Revenue, Cost of Goods Sold, Inventory Asset, General Expense, and Owner Equity.
+- Update registration so default businesses receive default accounts and mappings in the same transaction.
+- Update `POST /businesses` so newly created businesses receive default accounts and mappings in the same transaction.
+- Add safe default-account backfill script for existing local businesses.
+- Add guarded tenant-scoped account endpoints for list, detail, create, update, and soft delete.
+- Add guarded tenant-scoped account-mapping endpoints for list and update.
+- Extend business permissions with account and account-mapping read/manage permissions.
+- Protect system accounts from deletion and protected code/type/normal-balance changes.
+- Validate account parent IDs and mapping account IDs against the active business.
+- Add minimal mobile account and account-mapping response types and read-only API methods.
+- Add focused backend tests for defaults, account rules, permissions, tenant isolation, soft delete, system protections, and mappings.
+- Smoke-test default accounts, mappings, custom account create/delete, cross-tenant denial, system-account protection, and same-code defaults across businesses.
+- Add tenant-scoped `JournalEntry` and `JournalLine` Prisma models.
+- Add `JournalEntryStatus` enum.
+- Create and apply Prisma migration `20260710233859_add_journal_foundation`.
+- Add required journal idempotency key storage with tenant-scoped uniqueness.
+- Add guarded tenant-scoped journal entry list and detail endpoints.
+- Add strict draft-only journal creation endpoint for balanced drafts.
+- Extend business permissions with journal read/manage/createDraft/post/void permissions.
+- Add internal journal balancing helper for debit/credit totals and line validation.
+- Add same-business active account validation for journal draft lines.
+- Add minimal mobile journal entry and journal line response types and read-only API methods.
+- Add focused backend tests for journal schema, balancing rules, account validation, tenant isolation, cross-tenant denial, draft safety, and permissions.
+- Smoke-test balanced draft journal creation, journal list/detail reads, cross-tenant denial, and unbalanced draft rejection.
+- Create `POSTING_SERVICE_CONTRACT.md` as the source of truth for future posting service behavior.
+- Define future posting service responsibilities and non-responsibilities.
+- Define future `postTransaction` contract, posting sources, return shape, safety gates, transaction type rules, account mapping rules, idempotency rules, atomicity rules, status transitions, validation rules, safe errors, future API design, AI tool boundary, testing plan, implementation phases, and acceptance criteria.
+- Confirm posting service contract design is documentation-only and does not implement posting.
+- Add Posting Preview Builder behind the accounting engine boundary.
+- Add `GET /businesses/:businessId/transactions/:transactionId/posting-preview`.
+- Add `postingPreview.read` permission for OWNER, ADMIN, and ACCOUNTANT.
+- Validate draft transaction intents, line totals, positive amounts, currency, same-business customer/supplier/product references, required mappings, mapped account status/type, and generated debit/credit balance.
+- Return safe preview responses with `canPost`, totals, preview lines, mappings used, warnings, and errors.
+- Support preview rules for `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, and `SUPPLIER_PAYMENT`.
+- Reject `ADJUSTMENT` preview safely until explicit debit and credit account selection is designed.
+- Add minimal mobile posting preview response types and read-only API method.
+- Add focused tests proving preview behavior, permission behavior, tenant scoping, mapping validation, status boundary, unbalanced preview rejection, and no journal/transaction persistence.
+- Smoke-test posting preview against Docker PostgreSQL.
+- Add Core Posting Service Phase 2 for `SALE`, `EXPENSE`, and `PURCHASE`.
+- Add `POST /businesses/:businessId/transactions/:transactionId/post`.
+- Use `journalEntries.post` for posting permission.
+- Require idempotency key and enforce tenant-scoped idempotency using `JournalEntry.businessId + idempotencyKey`.
+- Create POSTED `JournalEntry` and balanced `JournalLine` records atomically with `Transaction.status = POSTED`.
+- Return existing posted journal for same transaction and same idempotency key.
+- Reject same idempotency key for a different transaction.
+- Reject already posted transaction when a different idempotency key is used.
+- Reject historical transaction-intent `POSTED` records without a matching posted journal as requiring reconciliation.
+- Initially reject unsupported CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, and ADJUSTMENT posting safely during Core Posting Service Phase 2.
+- Verify product quantity is not changed by posting.
+- Add minimal mobile post transaction response types and API method.
+- Add focused tests for posting rules, idempotency, atomicity ordering, permission behavior, unsupported types, no inventory/audit behavior, cross-tenant safety, and historical POSTED boundary.
+- Smoke-test SALE, EXPENSE, PURCHASE, idempotency retry, duplicate prevention, cross-tenant denial, unsupported types, and unchanged product quantity against Docker PostgreSQL.
+- Add Payment Posting Phase 3 for `CUSTOMER_PAYMENT` and `SUPPLIER_PAYMENT`.
+- Reuse `POST /businesses/:businessId/transactions/:transactionId/post` for payment posting.
+- Reuse `journalEntries.post` for payment posting permission.
+- Post `CUSTOMER_PAYMENT` by debiting Cash and crediting Accounts Receivable.
+- Require `customerId` and verify the customer belongs to the same business before customer payment posting.
+- Post `SUPPLIER_PAYMENT` by debiting Accounts Payable and crediting Cash.
+- Require `supplierId` and verify the supplier belongs to the same business before supplier payment posting.
+- Validate payment posting account mappings, mapped account status, and mapped account types.
+- Reuse tenant-scoped idempotency and duplicate-prevention behavior for payment posting.
+- Reuse the atomic POSTED JournalEntry, JournalLine, and `Transaction.status = POSTED` update behavior for payment posting.
+- Keep `ADJUSTMENT` posting safely blocked.
+- Confirm payment posting does not change product quantity and does not add InventoryMovement or AuditLog behavior.
+- Add focused backend tests for payment posting rules, mapping errors, idempotency, duplicate prevention, permissions, no inventory/audit behavior, and `ADJUSTMENT` rejection.
+- Smoke-test `CUSTOMER_PAYMENT`, `SUPPLIER_PAYMENT`, idempotent retry, cross-tenant denial, unchanged product quantity, and `ADJUSTMENT` rejection against Docker PostgreSQL.
+- Create `ADJUSTMENT_POSTING_DESIGN.md` as the source of truth for future safe ADJUSTMENT preview and posting.
+- Document why ADJUSTMENT is high risk and must never guess debit or credit accounts silently.
+- Document future adjustment categories and limit the first implementation recommendation to simple manual financial adjustments.
+- Define required explicit adjustment input with reason, description, posting date, and debit/credit account lines.
+- Evaluate current `TransactionLine` fit and conclude it should not be overloaded for adjustment account lines.
+- Recommend future dedicated `TransactionAdjustmentLine` storage before ADJUSTMENT preview/posting implementation.
+- Define future ADJUSTMENT preview behavior, posting behavior, account rules, permissions, safety gates, safe errors, AI boundary, testing plan, implementation phases, and acceptance criteria.
+- Confirm the ADJUSTMENT design task is documentation-only and does not implement schema, migrations, APIs, posting logic, status changes, inventory, audit, AI, reports, PDFs, dashboards, bank/OCR, budgets/goals, or mobile posting UI.
+- Add `TransactionAdjustmentLine` schema and `Transaction.adjustmentReason`.
+- Add migration `20260711161000_add_adjustment_lines`.
+- Add dedicated adjustment permissions for read, manage, and preview.
+- Add adjustment line read and replace endpoints for DRAFT ADJUSTMENT transactions.
+- Add ADJUSTMENT preview endpoint that uses stored adjustment lines and returns preview-only balanced debit/credit lines.
+- Validate same-business active accounts for adjustment lines.
+- Reject invalid debit/credit combinations, unbalanced lines, zero-value lines, negative amounts, non-ADJUSTMENT transactions, and non-DRAFT adjustment transactions.
+- Return sensitive-account warnings for adjustment preview.
+- Keep ADJUSTMENT posting blocked in the existing posting endpoint.
+- Add minimal mobile adjustment line and adjustment preview types plus API methods.
+- Add focused backend tests for adjustment line storage, validation, permissions, preview behavior, no ledger persistence, and existing posting safety.
+- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate` pass after adjustment line/preview implementation.
+- Restore Docker/PostgreSQL for final ADJUSTMENT verification.
+- Apply migration `20260711161000_add_adjustment_lines` with `npx.cmd prisma migrate deploy --schema apps/backend/prisma/schema.prisma`.
+- Verify `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports the database schema is up to date.
+- Smoke-test ADJUSTMENT line persistence, readback, preview balance, sensitive-account warnings, posting rejection, cross-tenant denial, unbalanced-line rejection, unchanged product quantity, and no ledger persistence against the running NestJS backend and Docker PostgreSQL.
+- Directly inspect PostgreSQL through Prisma to confirm `TransactionAdjustmentLine` exists, `Transaction.adjustmentReason` exists, lines reference the correct business and transaction, no `JournalEntry` or `JournalLine` records were created by preview, the transaction remains `DRAFT`, and no inventory/audit tables exist.
+- Approve ADJUSTMENT line schema + preview foundation.
 - Fix Expo Router Metro runtime error for missing `expo-router/assets/logotype.png`.
 - Fix Expo Router Metro runtime error for missing `expo-linking`.
 - Add direct mobile dependencies for Expo Router peer modules.
@@ -61,25 +198,27 @@
 
 ## In Progress
 
-- Authentication foundation is partially complete pending PostgreSQL migration execution and live auth endpoint/device QA.
+- No active ADJUSTMENT line/preview verification blocker remains.
 
 ## Next Recommended Task
 
-- Run Prisma migration against a local PostgreSQL database and smoke-test auth endpoints.
-- Verify mobile login/register/session restore/logout on Android against the backend.
-- Add tenant-aware authorization design after auth endpoint QA is complete.
+- If separately approved, implement the future ADJUSTMENT posting pathway using `ADJUSTMENT_POSTING_DESIGN.md` and `ACCOUNTING_ENGINE_BOUNDARY.md`.
+- Keep ADJUSTMENT posting, reversals, inventory movement automation, sale COGS posting, audit logs, accounting periods, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, and polished ledger UI out of scope unless separately approved.
+- Keep current `Transaction` records as intent records; do not treat `Transaction.status = POSTED` as real ledger posting unless a future posting service creates or reconciles balanced journal entries and lines through an explicit idempotent pathway.
+- Do not add inventory movement automation, audit logs, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, or polished ledger UI until their boundaries are explicitly approved.
 - Use `CHAT_AI_BOUNDARY.md` and `AI_CONTRACT.md` as the inputs before designing backend chat endpoints.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.
 - Run all workspace commands from the repository root; there is no longer a nested `finance-ai/` project directory.
 
 ## Next Engineering Support
 
-- Add Docker Compose for local PostgreSQL after chat UI runtime stability is fully verified.
+- Keep the longer Android QA waits and UI-tree checks for future emulator-based flows.
+- Configure Java/JDK tooling only if the project needs Expo development builds later; Expo Go was sufficient for the approved auth QA run after emulator reboot.
 - Review npm audit findings and upgrade transitive dependency chains where compatible with Expo and Nest.
 
 ## Later
 
-- Authentication and tenant-aware authorization.
+- Double-entry ledger, finalized accounting engine, inventory movement engine, and accounting posting workflow.
 - AI engine, DeepSeek integration, prompt builder, tool calling, conversation context, and structured outputs.
 - Accounting engine for transactions, customers, suppliers, and ledger.
 - Inventory, reports, PDF export, dashboard, voice, and polish phases.
