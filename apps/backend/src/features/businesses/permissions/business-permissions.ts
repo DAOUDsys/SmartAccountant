@@ -26,7 +26,9 @@ export type BusinessPermission =
   | 'journalEntries.void'
   | 'postingPreview.read'
   | 'reversals.preview'
-  | 'reversals.create';
+  | 'reversals.create'
+  | 'auditLogs.read'
+  | 'auditLogs.readSecurity';
 
 export const businessRoleOrder: Record<BusinessRole, number> = {
   [BusinessRole.OWNER]: 5,
@@ -64,6 +66,8 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'postingPreview.read',
     'reversals.preview',
     'reversals.create',
+    'auditLogs.read',
+    'auditLogs.readSecurity',
   ],
   [BusinessRole.ADMIN]: [
     'customers.read',
@@ -92,6 +96,8 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'postingPreview.read',
     'reversals.preview',
     'reversals.create',
+    'auditLogs.read',
+    'auditLogs.readSecurity',
   ],
   [BusinessRole.ACCOUNTANT]: [
     'customers.read',
@@ -120,6 +126,7 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'postingPreview.read',
     'reversals.preview',
     'reversals.create',
+    'auditLogs.read',
   ],
   [BusinessRole.STAFF]: [
     'customers.read',

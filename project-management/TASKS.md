@@ -219,7 +219,50 @@
 - Keep preview non-persisted, generic POSTED void blocked, and DRAFT cancellation behavior unchanged.
 - Add backend coverage for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, and ADJUSTMENT reversal execution.
 - Add minimal mobile reverse-transaction request/response types and API method without adding mobile UI.
-- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate` pass after reversal execution implementation.
+- Verify
+  pm.cmd run lint,
+  pm.cmd run build,
+  pm.cmd run test,
+  pm.cmd run prisma:validate, and
+  pm.cmd run prisma:generate pass after reversal execution implementation.
+- Restore Docker/PostgreSQL and confirm `smartaccountant_dev` accepts connections on `localhost:5432`.
+- Verify Prisma migration status reports seven applied migrations and `20260711220000_add_reversal_relations` applied.
+- Run final reversal execution validation: `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate`.
+- Live-smoke SALE reversal through the backend and PostgreSQL.
+- Confirm reversal preview remains balanced and non-persisted during live smoke.
+- Confirm same-key reversal retry returns the same reversal without duplicate journals or lines.
+- Confirm changed-payload idempotency-key reuse fails safely.
+- Confirm a different idempotency key cannot create a second reversal after success.
+- Live-smoke same-key and different-key concurrent reversal attempts and confirm at most one reversal relation persists.
+- Confirm cross-tenant reversal is denied.
+- Confirm OWNER, ADMIN, and ACCOUNTANT can reverse while STAFF and VIEWER are denied.
+- Live-smoke ADJUSTMENT reversal and confirm posted journal lines, not adjustment intent lines, are the reversal source.
+- Live-smoke CUSTOMER_PAYMENT reversal through the same generic journal-based reversal algorithm.
+- Confirm DRAFT generic void succeeds without creating a journal.
+- Confirm direct generic POSTED void remains blocked with `POSTED_TRANSACTION_REQUIRES_REVERSAL`.
+- Directly inspect PostgreSQL to confirm reversal metadata, void metadata, relation cardinality, swapped reversal lines, unchanged original lines, and no partial/orphan reversal rows.
+- Confirm product quantity remains unchanged during reversal smoke.
+- Confirm no InventoryMovement or AuditLog table/behavior was introduced.
+- Approve Atomic Financial Reversal Execution for this phase.
+- Create `AUDIT_LOG_DESIGN.md` as the source of truth for future tenant-scoped append-only audit logs.
+- Define the boundary between ledger truth, domain data, and audit evidence.
+- Define mandatory audit redaction rules and secret-exclusion rules.
+- Design the future `AuditLog` model with actor, event, outcome, entity, request, source, reason, error, metadata, and timestamp fields.
+- Recommend stable string event names centralized in a TypeScript event catalog rather than database enums for event names.
+- Define tenant scoping, including nullable `businessId` only for explicitly global authentication events.
+- Define append-only immutability and no public audit create/update/delete endpoints.
+- Define the initial event catalog for authentication, business membership, accounting configuration, domain data, posting, reversal, and journal workflows.
+- Define atomic success-event integration for posting and reversal once audit logging is mandatory.
+- Define safe failed-attempt and denied-event integration after transaction rollback.
+- Define strict metadata allowlisting, metadata size/depth limits, and idempotency-key fingerprinting.
+- Define trusted actor and request context rules for user, system, import, background job, and future AI tool events.
+- Define future tenant-scoped audit read APIs and filters.
+- Define `auditLogs.read` and `auditLogs.readSecurity` permission recommendations.
+- Define retention, indexing, archival, privacy, and tamper-monitoring considerations.
+- Define safe audit subsystem errors and AI audit boundaries.
+- Define future tests, implementation phases, and acceptance criteria for AuditLog implementation.
+- Confirm no Prisma schema, migration, endpoint, audit-write logic, accounting period, inventory movement, COGS, approval workflow, AI orchestration, report, PDF, dashboard, chat persistence, or mobile audit UI was implemented.
+- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate` pass after Audit Log design.
 - Fix Expo Router Metro runtime error for missing `expo-router/assets/logotype.png`.
 - Fix Expo Router Metro runtime error for missing `expo-linking`.
 - Add direct mobile dependencies for Expo Router peer modules.
@@ -251,16 +294,15 @@
 
 ## In Progress
 
-- Reversal execution implementation is code-complete at the service, controller, permission, test, and mobile API type layers.
-- Final live reversal API smoke, Prisma migration status against the live database, and direct database inspection are blocked until Docker Desktop/PostgreSQL is available locally.
+- No active reversal execution verification blocker remains.
 - No active ADJUSTMENT posting verification blocker remains.
 
 ## Next Recommended Task
 
-- Start Docker Desktop/PostgreSQL and run final live reversal API smoke plus direct database inspection for the implemented reversal endpoint.
-- Keep inventory movement automation, sale COGS posting, audit logs, accounting periods, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, and polished ledger UI out of scope unless separately approved.
+- If separately approved, implement the AuditLog schema, append-only internal audit service, tenant-scoped read API, metadata redaction utilities, request/correlation ID middleware, and audit permissions.
+- Keep accounting periods, inventory movement automation, sale COGS posting, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, and polished ledger UI out of scope unless separately approved; accounting periods should follow after the audit foundation.
 - Keep current `Transaction` records as intent records; treat `Transaction.status = POSTED` as ledger-trustworthy only when it has a matching posted journal created by the approved posting endpoint.
-- Do not add inventory movement automation, audit logs, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, or polished ledger UI until their boundaries are explicitly approved.
+- Do not add inventory movement automation, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, or polished ledger UI until their boundaries are explicitly approved.
 - Use `CHAT_AI_BOUNDARY.md` and `AI_CONTRACT.md` as the inputs before designing backend chat endpoints.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.
 - Run all workspace commands from the repository root; there is no longer a nested `finance-ai/` project directory.

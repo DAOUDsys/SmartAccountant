@@ -74,6 +74,28 @@ enum JournalEntryStatus {
   REVERSED
 }
 
+enum AuditActorType {
+  USER
+  SYSTEM
+  IMPORT
+  FUTURE_AI_TOOL
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum AuditSource {
+  API
+  MOBILE
+  SYSTEM_RETRY
+  IMPORT
+  BACKGROUND_JOB
+  FUTURE_AI_TOOL
+}
+
 model User {
   id                      String           @id @default(uuid())
   email                   String           @unique
@@ -92,6 +114,7 @@ model User {
   journalEntriesCreated   JournalEntry[]   @relation("JournalEntryCreator")
   journalEntriesVoided    JournalEntry[]   @relation("JournalEntryVoider")
   journalEntriesReversed  JournalEntry[]   @relation("JournalEntryReverser")
+  auditLogs               AuditLog[]        @relation("AuditLogActorUser")
 
   @@index([deletedAt])
 }
@@ -118,6 +141,7 @@ model Business {
   accounts                   Account[]
   accountMappings            AccountMapping[]
   journalEntries             JournalEntry[]
+  auditLogs                  AuditLog[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -394,4 +418,36 @@ model JournalLine {
 
   @@index([journalEntryId])
   @@index([accountId])
+}
+model AuditLog {
+  id                String         @id @default(uuid())
+  businessId        String?
+  actorUserId       String?
+  actorType         AuditActorType
+  eventType         String         @db.VarChar(100)
+  action            String         @db.VarChar(50)
+  outcome           AuditOutcome
+  entityType        String?        @db.VarChar(100)
+  entityId          String?
+  relatedEntityType String?        @db.VarChar(100)
+  relatedEntityId   String?
+  requestId         String?        @db.VarChar(100)
+  correlationId     String?        @db.VarChar(100)
+  source            AuditSource
+  ipAddress         String?        @db.VarChar(64)
+  userAgent         String?        @db.VarChar(512)
+  reason            String?        @db.VarChar(500)
+  errorCode         String?        @db.VarChar(100)
+  metadata          Json?
+  occurredAt        DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  business          Business?      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  actorUser         User?          @relation("AuditLogActorUser", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, occurredAt])
+  @@index([businessId, eventType, occurredAt])
+  @@index([businessId, entityType, entityId])
+  @@index([businessId, actorUserId, occurredAt])
+  @@index([correlationId])
+  @@index([requestId])
 }

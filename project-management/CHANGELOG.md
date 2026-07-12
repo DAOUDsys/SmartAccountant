@@ -1,5 +1,124 @@
 # Changelog
 
+## 0.1.25 - 2026-07-12
+
+### Added
+
+- Added `AuditLog` Prisma schema with nullable `businessId` for approved global events, `actorUserId`, actor/outcome/source enums, safe bounded text fields, JSON metadata, `occurredAt`, `createdAt`, tenant/user relations, and audit query indexes.
+- Added migration `20260712073747_add_audit_log_foundation`.
+- Added centralized backend audit event catalog with stable event constants, categories, actions, tenant requirements, metadata allowlists, and role readability.
+- Added strict audit metadata validation/redaction, email masking, attempted-email fingerprinting, idempotency-key fingerprinting, and safe audit error codes.
+- Added append-only internal `AuditLogService` with trusted `createEvent`, optional Prisma transaction-client injection, tenant-scoped list/detail reads, bounded filters, cursor pagination, and defensive response mapping.
+- Added request ID and safe correlation ID middleware that returns `x-request-id` and `x-correlation-id` headers.
+- Added read-only audit endpoints: `GET /businesses/:businessId/audit-logs` and `GET /businesses/:businessId/audit-logs/:auditLogId`.
+- Added `auditLogs.read` and `auditLogs.readSecurity` permissions.
+
+### Changed
+
+- OWNER and ADMIN can read business-scoped accounting and security audit events.
+- ACCOUNTANT can read ACCOUNTING audit events only and cannot read AUTH_SECURITY or TENANCY_SECURITY event categories.
+- STAFF and VIEWER are denied audit log access.
+- Tenant audit endpoints exclude global `businessId = null` events.
+- Updated README and project-management status/task tracking for Audit Log Foundation approval.
+
+### Verified
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed with 26 files and 244 tests.
+- `npx prisma migrate status --schema apps/backend/prisma/schema.prisma` passed with 8 migrations and database schema up to date.
+- `npm run prisma:validate` passed with the local development `DATABASE_URL`.
+- `npm run prisma:generate` passed.
+- Live smoke passed through a temporary local harness that started the Nest app, registered users, created internal audit events, verified owner/accountant/staff/viewer/cross-tenant endpoint behavior, verified request/correlation headers, confirmed no public audit write endpoints, inspected PostgreSQL directly, and confirmed journal entry/line counts were unchanged.
+
+### Boundary Notes
+
+- No posting, reversal, authentication, CRUD, AI, Prisma accounting, ledger, inventory, COGS, approval, report, PDF, dashboard, chat persistence, or mobile audit UI integration was added.
+- Audit records are evidence only; ledger truth remains `JournalEntry` and `JournalLine`.
+
+### Pending
+
+- Posting success audit integration.
+- Reversal success audit integration.
+- Failed/denied action audit integration.
+- Authentication and CRUD audit integration.
+- Global security audit read endpoint.
+- Retention/archival, database immutable trigger, hash chaining, external write-once archive, accounting periods, AI audit integration, and mobile audit UI.
+
+## 0.1.24 - 2026-07-12
+
+### Added
+
+- Added `AUDIT_LOG_DESIGN.md` as the source-of-truth architecture contract for future secure, tenant-scoped, append-only audit logging.
+- Defined the difference between ledger data, domain data, and audit evidence.
+- Defined mandatory redaction rules for tokens, passwords, password hashes, authorization headers, cookies, API keys, provider keys, connection strings, credentials, raw request/response bodies, raw exception objects, stack traces, private environment variables, hidden chain-of-thought, prompts, and full model response dumps.
+- Designed the future `AuditLog` model, actor/outcome/source enums, tenant-scoping rules, append-only behavior, stable string event catalog, metadata allowlist, request/actor context, read APIs, permission model, retention/indexing guidance, safe audit errors, AI boundaries, tests, implementation phases, and acceptance criteria.
+
+### Changed
+
+- Updated project status and task tracking to show Atomic Financial Reversal Execution is fully approved and Audit Log design is complete.
+- Updated the next recommended task to AuditLog schema, append-only internal service, tenant-scoped read API, metadata redaction utilities, request/correlation ID middleware, and audit permissions.
+- Clarified that accounting periods should follow after the audit foundation.
+- Fixed the literal newline formatting artifact in the `0.1.22` pending section without changing its historical meaning.
+
+### Verified
+
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed with 21 files and 194 tests.
+- `npm.cmd run prisma:validate` passed with the local development `DATABASE_URL`.
+- `npm.cmd run prisma:generate` passed.
+
+### Boundary Notes
+
+- Documentation/design only.
+- No Prisma schema, migration, backend endpoint, audit-write logic, posting or reversal behavior change, accounting period, inventory movement, COGS, approval workflow, AI orchestration, report, PDF, dashboard, chat persistence, or mobile audit UI was implemented.
+
+### Pending
+
+- Next recommended implementation phase is AuditLog schema plus append-only internal audit service and tenant-scoped read API.
+- Accounting periods remain after the audit foundation.
+
+## 0.1.23 - 2026-07-12
+
+### Verified
+
+- Restored Docker/PostgreSQL and confirmed `smartaccountant_dev` accepts connections on `localhost:5432`.
+- `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports seven migrations and an up-to-date database.
+- Confirmed migration `20260711220000_add_reversal_relations` is applied in `_prisma_migrations`.
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed with 21 files and 194 tests.
+- `npm.cmd run prisma:validate` passed with the local development `DATABASE_URL`.
+- `npm.cmd run prisma:generate` passed.
+- Live SALE reversal smoke passed, including balanced original journal lines, balanced non-persisted preview, swapped reversal lines, original journal `REVERSED`, reversal journal `POSTED`, source transaction `VOIDED`, persisted reversal/void metadata, unchanged original posted `JournalLine` records, and unchanged product quantity.
+- Same-key idempotent retry returned the same reversal and created no duplicate journals or lines.
+- Changed-payload idempotency-key reuse returned a safe `REVERSAL_IDEMPOTENCY_CONFLICT` response.
+- Different-key retry after successful reversal returned a safe conflict and created no second reversal relation.
+- Real live concurrency tests passed for same-key and different-key reversal attempts; each produced at most one reversal relation, and losing requests returned safe responses without raw Prisma errors.
+- Cross-tenant reversal was denied with 403.
+- Live role behavior passed: OWNER, ADMIN, and ACCOUNTANT can reverse; STAFF and VIEWER are denied.
+- Live ADJUSTMENT reversal passed and confirmed reversal lines are derived from the posted journal, while original `TransactionAdjustmentLine` rows remain unchanged.
+- Live CUSTOMER_PAYMENT reversal passed through the same generic posted-journal reversal algorithm.
+- DRAFT generic void still succeeds without creating a journal.
+- Direct generic POSTED void remains blocked with `POSTED_TRANSACTION_REQUIRES_REVERSAL`, leaving the transaction and journal `POSTED` with original lines unchanged.
+- Direct database inspection confirmed exactly one reversal journal references each reversed original, no orphan reversal journals, no non-POSTED reversal journals, no partial reversal rows, and no InventoryMovement or AuditLog tables.
+
+### Changed
+
+- Marked the previous Docker/PostgreSQL verification blocker as resolved.
+- Atomic Financial Reversal Execution is approved for this phase.
+
+### Boundary Notes
+
+- No code or Prisma migration was added during this live-verification task.
+- A destructive forced mid-transaction failure was not injected into the live database; rollback safety remains covered by focused tests and live concurrency/idempotency loser paths, which left no partial reversal rows.
+- No inventory movement reversal, sale COGS reversal, audit log, accounting period lock, approval workflow, AI orchestration, chat persistence, report, PDF, dashboard, or mobile reversal UI was added.
+
+### Pending
+
+- Audit logs, accounting period controls, inventory reversal behavior, approval workflows, request-hash idempotency comparison, and AI-assisted reversal remain later phases.
+
 ## 0.1.22 - 2026-07-12
 
 ### Added
@@ -29,8 +148,8 @@
 
 ### Blocked Verification
 
-- `docker compose up -d postgres` could not start PostgreSQL because Docker Desktop is not running in this session.
-- `localhost:5432` is not accepting TCP connections, so final live API smoke, Prisma migration status against the live database, and direct database inspection are pending.
+- Resolved in `0.1.23`: Docker/PostgreSQL was restored, `localhost:5432` accepted connections, migration status was clean, and live API smoke plus direct database inspection passed.
+- Historical note: during initial `0.1.22` verification, `docker compose up -d postgres` could not start PostgreSQL because Docker Desktop was not running, so live API smoke and direct database inspection were temporarily pending.
 
 ### Boundary Notes
 
@@ -40,7 +159,7 @@
 
 ### Pending
 
-- Run final live reversal smoke and direct database inspection once Docker Desktop/PostgreSQL is available.
+- Resolved in `0.1.23`: final live reversal smoke and direct database inspection passed after Docker/PostgreSQL was restored.
 - Audit logs, accounting periods, inventory movement reversal, approval workflows, request-hash idempotency comparison, and AI-assisted reversal remain later phases.
 
 ## 0.1.21 - 2026-07-11

@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import type { MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../database/prisma.module';
 import { AccountsModule } from '../features/accounts/accounts.module';
+import { AuditModule, RequestContextMiddleware } from '../features/audit';
 import { AdjustmentsModule } from '../features/adjustments';
 import { AuthModule } from '../features/auth/auth.module';
 import { AiModule } from '../features/ai/ai.module';
@@ -29,6 +31,7 @@ import { appConfig, validateEnvironment } from '../config/app.config';
     PrismaModule,
     HealthModule,
     AuthModule,
+    AuditModule,
     BusinessesModule,
     AccountsModule,
     AdjustmentsModule,
@@ -43,4 +46,8 @@ import { appConfig, validateEnvironment } from '../config/app.config';
     AiModule,
   ],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}

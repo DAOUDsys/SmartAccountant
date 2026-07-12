@@ -63,7 +63,7 @@ Generate the Prisma client:
 npm run prisma:generate
 ```
 
-Apply local database migrations. The current local migration history includes auth, tenancy, accounting foundation, chart of accounts, journal foundation, adjustment lines, and reversal relation migrations through `20260711220000_add_reversal_relations`:
+Apply local database migrations. The current local migration history includes auth, tenancy, accounting foundation, chart of accounts, journal foundation, adjustment lines, and reversal relation migrations through `20260712073747_add_audit_log_foundation`:
 
 ```bash
 npx prisma migrate dev --schema apps/backend/prisma/schema.prisma
@@ -155,6 +155,9 @@ Current accounting endpoints:
 - `/businesses/:businessId/transactions/:transactionId/adjustment-preview`: `POST`
 - `/businesses/:businessId/transactions/:transactionId/post`: `POST`
 - `/businesses/:businessId/transactions/:transactionId/reversal-preview`: `POST`
+- `/businesses/:businessId/transactions/:transactionId/reverse`: `POST`
+- `/businesses/:businessId/audit-logs`: `GET`
+- `/businesses/:businessId/audit-logs/:auditLogId`: `GET`
 
 New businesses receive default system accounts for Cash, Accounts Receivable, Inventory Asset, Accounts Payable, Owner Equity, Sales Revenue, Cost of Goods Sold, and General Expense. Default mappings connect future posting configuration keys to those accounts.
 
@@ -173,6 +176,30 @@ Reversal preview is available through `POST /businesses/:businessId/transactions
 Draft journal creation remains separate from posting. `Transaction.status = POSTED` is ledger-trustworthy only when produced by the approved posting endpoint with a matching posted journal entry. Existing historical transaction-intent `POSTED` records without a matching posted journal require reconciliation and are not treated as ledger truth.
 
 Posting and reversal preview do not automate inventory movements, create reversing journals, mark journals `REVERSED`, update POSTED transactions to `VOIDED`, post COGS for sales, write audit logs, enforce accounting periods, run approval workflows, call AI tools, generate reports, export PDFs, build dashboards, connect bank/OCR flows, add budgets/goals, add mobile reversal UI, or persist chat messages.
+
+## Audit Log Foundation
+
+The backend includes the Audit Log Foundation from migration `20260712073747_add_audit_log_foundation`. `AuditLog` records are append-only evidence and are not ledger truth. Ledger truth remains in POSTED `JournalEntry` and balanced `JournalLine` records.
+
+Audit events are created only by trusted backend code through the internal `AuditLogService`; there is no public create, update, patch, or delete audit endpoint. The service validates event types against a stable backend catalog, enforces tenant-owned `businessId` where required, supports approved global authentication/security events with `businessId = null`, sanitizes allowlisted metadata, rejects secret-like fields, and supports optional Prisma transaction-client injection for future atomic posting/reversal audit writes.
+
+Read-only tenant endpoints:
+
+- `GET /businesses/:businessId/audit-logs`
+- `GET /businesses/:businessId/audit-logs/:auditLogId`
+
+List filters include `eventType`, `outcome`, `actorUserId`, `entityType`, `entityId`, `dateFrom`, `dateTo`, `correlationId`, `requestId`, `cursor`, and `limit`. Results are newest-first, cursor-paginated, default to 25 items, and cap at 100 items.
+
+Permission behavior:
+
+- OWNER and ADMIN have `auditLogs.read` and `auditLogs.readSecurity`, so they can read business-scoped accounting and security audit events.
+- ACCOUNTANT has `auditLogs.read` only and can read ACCOUNTING events, but not AUTH_SECURITY or TENANCY_SECURITY events.
+- STAFF and VIEWER are denied audit log access.
+- Global `businessId = null` events are excluded from tenant endpoints and require a future global security endpoint.
+
+Every HTTP request receives a backend-generated `x-request-id`. A safe incoming `x-correlation-id` is propagated only when it matches the bounded safe format; otherwise the backend generates and returns a replacement correlation ID.
+
+Known limitations: posting, reversal, authentication, failed/denied action, and CRUD audit writes are not integrated yet; no global security audit read endpoint exists; no retention/archival, immutable database trigger, hash chaining, external write-once archive, accounting periods, AI audit integration, or mobile audit UI exists yet.
 
 ## Continuous Integration
 
