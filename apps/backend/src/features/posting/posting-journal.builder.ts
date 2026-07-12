@@ -144,7 +144,7 @@ export function buildPostingJournalLines(
 
     default:
       throw new BadRequestException(
-        'Posting is only supported for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, and SUPPLIER_PAYMENT transactions.',
+        'Posting is only supported for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, and ADJUSTMENT transactions.',
       );
   }
 

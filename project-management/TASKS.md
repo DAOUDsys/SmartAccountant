@@ -157,7 +157,7 @@
 - Validate same-business active accounts for adjustment lines.
 - Reject invalid debit/credit combinations, unbalanced lines, zero-value lines, negative amounts, non-ADJUSTMENT transactions, and non-DRAFT adjustment transactions.
 - Return sensitive-account warnings for adjustment preview.
-- Keep ADJUSTMENT posting blocked in the existing posting endpoint.
+- Keep ADJUSTMENT posting out of the line/preview phase until a separate posting implementation is approved.
 - Add minimal mobile adjustment line and adjustment preview types plus API methods.
 - Add focused backend tests for adjustment line storage, validation, permissions, preview behavior, no ledger persistence, and existing posting safety.
 - Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate` pass after adjustment line/preview implementation.
@@ -167,6 +167,59 @@
 - Smoke-test ADJUSTMENT line persistence, readback, preview balance, sensitive-account warnings, posting rejection, cross-tenant denial, unbalanced-line rejection, unchanged product quantity, and no ledger persistence against the running NestJS backend and Docker PostgreSQL.
 - Directly inspect PostgreSQL through Prisma to confirm `TransactionAdjustmentLine` exists, `Transaction.adjustmentReason` exists, lines reference the correct business and transaction, no `JournalEntry` or `JournalLine` records were created by preview, the transaction remains `DRAFT`, and no inventory/audit tables exist.
 - Approve ADJUSTMENT line schema + preview foundation.
+- Add stored-line ADJUSTMENT posting through the existing posting endpoint.
+- Add dedicated `adjustments.post` permission for OWNER, ADMIN, and ACCOUNTANT.
+- Keep STAFF and VIEWER denied for ADJUSTMENT posting.
+- Revalidate stored ADJUSTMENT header and lines inside the Prisma posting transaction.
+- Create POSTED `JournalEntry` and `JournalLine` records from stored `TransactionAdjustmentLine` rows only.
+- Update `Transaction.status` to `POSTED` atomically with ADJUSTMENT journal creation.
+- Reuse existing tenant-scoped idempotency behavior for ADJUSTMENT posting.
+- Confirm ADJUSTMENT posting does not accept request-body journal lines, does not guess accounts, and does not use account mappings.
+- Add focused tests for valid ADJUSTMENT posting, invalid stored-line rejection, role enforcement, idempotency, duplicate prevention, and atomic rollback.
+- Smoke-test ADJUSTMENT posting against the running NestJS backend and Docker PostgreSQL.
+- Verify product quantity is not changed by ADJUSTMENT posting.
+- Directly inspect PostgreSQL to confirm posted journal lines match stored adjustment lines.
+- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, `npm.cmd run prisma:generate`, and Prisma migration status pass after ADJUSTMENT posting implementation.
+- Create `REVERSAL_VOID_DESIGN.md` as the source of truth for safe draft cancellation, posted transaction reversal, journal void semantics, and future inventory-affecting reversals.
+- Separate DRAFT cancellation from POSTED reversal.
+- Require immutable posted `JournalLine` records and reversing journal entries for posted corrections.
+- Document the current unsafe generic transaction void behavior for ledger-backed POSTED transactions.
+- Recommend future `JournalEntry` reversal relation fields and `Transaction` void metadata.
+- Define future reversal service contract, endpoint design, non-persisted reversal preview, atomic reversal posting, idempotency rules, permissions, status transitions, safety gates, transaction-type behavior, inventory boundary, period boundary, audit boundary, safe errors, AI boundary, testing plan, and phased implementation.
+- Update project-management status, tasks, and changelog for reversal/void design.
+- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, `npm.cmd run prisma:generate`, and Prisma migration status pass after Reversal/Void design documentation.
+- Add `JournalEntry` reversal relationship schema with unique nullable `reversesJournalEntryId`.
+- Add nullable `JournalEntry` reversal metadata and `Transaction` void metadata.
+- Create and apply migration `20260711220000_add_reversal_relations`.
+- Add `reversals.preview` permission for OWNER, ADMIN, and ACCOUNTANT while denying STAFF and VIEWER.
+- Add `POST /businesses/:businessId/transactions/:transactionId/reversal-preview`.
+- Build reversal preview from the original source-linked POSTED journal only.
+- Swap original journal line debit and credit values in preview responses.
+- Verify reversal preview creates no journal data, changes no statuses, mutates no original lines, creates no reversal relation metadata, and changes no product quantity.
+- Harden generic transaction void so POSTED transactions return `POSTED_TRANSACTION_REQUIRES_REVERSAL` and DRAFT cancellation still works.
+- Add minimal mobile reversal preview request/response types and API method.
+- Add focused tests for all six posted transaction types, validation failures, permission behavior, no-persistence guarantees, cross-tenant safety, direct POSTED void blocking, and DRAFT cancellation.
+- Smoke-test SALE reversal preview, POSTED void protection, DRAFT cancellation, cross-tenant denial, POSTED ADJUSTMENT reversal preview, unchanged journal counts, unchanged statuses, and unchanged product quantity.
+- Verify docker compose up -d postgres, Prisma migration status,
+  pm.cmd run lint,
+  pm.cmd run build,
+  pm.cmd run test,
+  pm.cmd run prisma:validate, and
+  pm.cmd run prisma:generate pass after reversal schema + preview implementation.
+- Add atomic financial reversal execution through `POST /businesses/:businessId/transactions/:transactionId/reverse`.
+- Add `reversals.create` permission for OWNER, ADMIN, and ACCOUNTANT while keeping STAFF and VIEWER denied.
+- Require reversal reason, reversal date, and idempotency key for executed reversals.
+- Restrict reversal source values to `MANUAL`, `SYSTEM_RETRY`, and `IMPORT`.
+- Create a POSTED reversing `JournalEntry` and swapped `JournalLine` records from the original posted journal.
+- Mark the original journal `REVERSED` with reversal metadata during reversal execution.
+- Mark the source transaction `VOIDED` with void metadata during reversal execution.
+- Execute reversal journal creation, original journal status update, and source transaction voiding atomically in a Serializable Prisma transaction.
+- Add idempotent same-key retry handling and conflict protection for mismatched idempotency-key reuse.
+- Add concurrency protection for duplicate reversal attempts using the unique reversal relation and conditional status updates.
+- Keep preview non-persisted, generic POSTED void blocked, and DRAFT cancellation behavior unchanged.
+- Add backend coverage for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, and ADJUSTMENT reversal execution.
+- Add minimal mobile reverse-transaction request/response types and API method without adding mobile UI.
+- Verify `npm.cmd run lint`, `npm.cmd run build`, `npm.cmd run test`, `npm.cmd run prisma:validate`, and `npm.cmd run prisma:generate` pass after reversal execution implementation.
 - Fix Expo Router Metro runtime error for missing `expo-router/assets/logotype.png`.
 - Fix Expo Router Metro runtime error for missing `expo-linking`.
 - Add direct mobile dependencies for Expo Router peer modules.
@@ -198,13 +251,15 @@
 
 ## In Progress
 
-- No active ADJUSTMENT line/preview verification blocker remains.
+- Reversal execution implementation is code-complete at the service, controller, permission, test, and mobile API type layers.
+- Final live reversal API smoke, Prisma migration status against the live database, and direct database inspection are blocked until Docker Desktop/PostgreSQL is available locally.
+- No active ADJUSTMENT posting verification blocker remains.
 
 ## Next Recommended Task
 
-- If separately approved, implement the future ADJUSTMENT posting pathway using `ADJUSTMENT_POSTING_DESIGN.md` and `ACCOUNTING_ENGINE_BOUNDARY.md`.
-- Keep ADJUSTMENT posting, reversals, inventory movement automation, sale COGS posting, audit logs, accounting periods, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, and polished ledger UI out of scope unless separately approved.
-- Keep current `Transaction` records as intent records; do not treat `Transaction.status = POSTED` as real ledger posting unless a future posting service creates or reconciles balanced journal entries and lines through an explicit idempotent pathway.
+- Start Docker Desktop/PostgreSQL and run final live reversal API smoke plus direct database inspection for the implemented reversal endpoint.
+- Keep inventory movement automation, sale COGS posting, audit logs, accounting periods, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, and polished ledger UI out of scope unless separately approved.
+- Keep current `Transaction` records as intent records; treat `Transaction.status = POSTED` as ledger-trustworthy only when it has a matching posted journal created by the approved posting endpoint.
 - Do not add inventory movement automation, audit logs, AI tool execution, reports, PDFs, dashboards, bank connections, OCR, or polished ledger UI until their boundaries are explicitly approved.
 - Use `CHAT_AI_BOUNDARY.md` and `AI_CONTRACT.md` as the inputs before designing backend chat endpoints.
 - Preserve the Android QA scripts and screenshot wait strategy for future mobile UI sprints.

@@ -7,7 +7,7 @@ const schema = readFileSync(join(process.cwd(), 'apps/backend/prisma/schema.pris
 describe('journal Prisma schema foundation', () => {
   it('defines JournalEntry as tenant scoped', () => {
     expect(schema).toContain('model JournalEntry');
-    expect(schema).toContain('businessId          String');
+    expect(schema).toMatch(/businessId\s+String/);
     expect(schema).toContain('@@index([businessId])');
     expect(schema).toContain('@@index([businessId, status])');
     expect(schema).toContain('@@unique([businessId, idempotencyKey])');
@@ -19,5 +19,17 @@ describe('journal Prisma schema foundation', () => {
     expect(schema).toContain('account        Account');
     expect(schema).toContain('@@index([journalEntryId])');
     expect(schema).toContain('@@index([accountId])');
+  });
+
+  it('defines nullable reversal relationship metadata for JournalEntry', () => {
+    expect(schema).toContain('reversesJournalEntryId String?');
+    expect(schema).toContain(
+      '@relation("JournalEntryReversal", fields: [reversesJournalEntryId], references: [id])',
+    );
+    expect(schema).toContain('reversedByJournalEntry JournalEntry?');
+    expect(schema).toContain('reversalReason         String?');
+    expect(schema).toContain('reversedAt             DateTime?');
+    expect(schema).toContain('reversedById           String?');
+    expect(schema).toContain('@@index([reversesJournalEntryId])');
   });
 });

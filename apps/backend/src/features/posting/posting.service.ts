@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -12,9 +13,22 @@ import {
   TransactionStatus,
   TransactionType,
 } from '@prisma/client';
-import type { Prisma as PrismaTypes } from '@prisma/client';
+import type { BusinessRole, Prisma as PrismaTypes } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { calculateJournalTotals } from '../journals/validators/journal-balancing';
+import {
+  calculateJournalTotals,
+  validateJournalLinesBalanced,
+} from '../journals/validators/journal-balancing';
+import {
+  validateAdjustmentHeader,
+  validateAdjustmentLines,
+} from '../adjustments/adjustment-line.validators';
+import { buildAdjustmentPreview } from '../adjustments/adjustment-preview.builder';
+import type { AdjustmentPreviewIssue } from '../adjustments/adjustment-preview.types';
+import {
+  hasBusinessPermission,
+  type BusinessPermission,
+} from '../businesses/permissions/business-permissions';
 import type { PostTransactionDto } from './dto/post-transaction.dto';
 import { buildPostingJournalLines } from './posting-journal.builder';
 import {
@@ -41,10 +55,11 @@ const supportedPostingTypes: TransactionType[] = [
   TransactionType.PURCHASE,
   TransactionType.CUSTOMER_PAYMENT,
   TransactionType.SUPPLIER_PAYMENT,
+  TransactionType.ADJUSTMENT,
 ];
 
 const supportedPostingTypesMessage =
-  'Posting is only supported for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, and SUPPLIER_PAYMENT transactions.';
+  'Posting is only supported for SALE, EXPENSE, PURCHASE, CUSTOMER_PAYMENT, SUPPLIER_PAYMENT, and ADJUSTMENT transactions.';
 
 @Injectable()
 export class PostingService {
@@ -54,6 +69,7 @@ export class PostingService {
     businessId: string,
     transactionId: string,
     userId: string,
+    membershipRole: BusinessRole,
     dto: PostTransactionDto,
   ): Promise<PostTransactionResponse> {
     const idempotencyKey = dto.idempotencyKey?.trim();
@@ -65,9 +81,16 @@ export class PostingService {
     const existingByKey = await this.findJournalByIdempotencyKey(businessId, idempotencyKey);
     if (existingByKey) {
       await this.ensureIdempotentJournalMatchesTransaction(existingByKey, transactionId);
+      const transaction = await this.findTransactionForPosting(
+        this.prisma,
+        businessId,
+        transactionId,
+      );
+      this.assertPostingPermission(transaction.type, membershipRole);
       return this.toPostResponse(
         existingByKey,
         await this.warningsForTransaction(businessId, transactionId),
+        transaction.type,
       );
     }
 
@@ -84,14 +107,30 @@ export class PostingService {
             existingInsideTransaction,
             transactionId,
           );
+          const transaction = await this.findTransactionForPosting(tx, businessId, transactionId);
+          this.assertPostingPermission(transaction.type, membershipRole);
           return this.toPostResponse(
             existingInsideTransaction,
             await this.warningsForTransaction(businessId, transactionId, tx),
+            transaction.type,
           );
         }
 
         const transaction = await this.findTransactionForPosting(tx, businessId, transactionId);
+        this.assertPostingPermission(transaction.type, membershipRole);
         await this.assertTransactionCanPost(tx, businessId, transaction);
+
+        if (transaction.type === TransactionType.ADJUSTMENT) {
+          return this.postAdjustmentTransaction(
+            tx,
+            businessId,
+            userId,
+            idempotencyKey,
+            transaction,
+            dto,
+          );
+        }
+
         await this.validateRelatedRecordsBelongToBusiness(tx, businessId, transaction);
 
         const mappings = await this.loadAccountMappings(tx, businessId);
@@ -102,9 +141,7 @@ export class PostingService {
         );
 
         const builtJournal = buildPostingJournalLines(transaction, mappings);
-        const postingDate = dto.postingDate
-          ? new Date(dto.postingDate)
-          : transaction.transactionDate;
+        const postingDate = this.resolvePostingDate(dto.postingDate, transaction.transactionDate);
         const postedAt = new Date();
 
         const journalEntry = await tx.journalEntry.create({
@@ -134,7 +171,7 @@ export class PostingService {
           where: { id: transaction.id },
         });
 
-        return this.toPostResponse(journalEntry, builtJournal.warnings);
+        return this.toPostResponse(journalEntry, builtJournal.warnings, transaction.type);
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -148,9 +185,16 @@ export class PostingService {
             existingAfterConflict,
             transactionId,
           );
+          const transaction = await this.findTransactionForPosting(
+            this.prisma,
+            businessId,
+            transactionId,
+          );
+          this.assertPostingPermission(transaction.type, membershipRole);
           return this.toPostResponse(
             existingAfterConflict,
             await this.warningsForTransaction(businessId, transactionId),
+            transaction.type,
           );
         }
       }
@@ -185,7 +229,7 @@ export class PostingService {
   }
 
   private async findTransactionForPosting(
-    prisma: PrismaTypes.TransactionClient,
+    prisma: PrismaTypes.TransactionClient | PrismaService,
     businessId: string,
     transactionId: string,
   ): Promise<TransactionIntentForPreview> {
@@ -238,11 +282,100 @@ export class PostingService {
       throw new BadRequestException(supportedPostingTypesMessage);
     }
 
-    const amountErrors = validateTransactionIntentAmounts(transaction);
-    this.throwValidationErrors([
-      ...amountErrors,
-      ...this.validateRequiredPaymentParty(transaction),
-    ]);
+    if (transaction.type !== TransactionType.ADJUSTMENT) {
+      const amountErrors = validateTransactionIntentAmounts(transaction);
+      this.throwValidationErrors([
+        ...amountErrors,
+        ...this.validateRequiredPaymentParty(transaction),
+      ]);
+    }
+  }
+
+  private assertPostingPermission(transactionType: TransactionType, role: BusinessRole) {
+    const permission: BusinessPermission =
+      transactionType === TransactionType.ADJUSTMENT ? 'adjustments.post' : 'journalEntries.post';
+
+    if (!hasBusinessPermission(role, permission)) {
+      throw new ForbiddenException('You do not have permission to post this transaction.');
+    }
+  }
+
+  private async postAdjustmentTransaction(
+    prisma: PrismaTypes.TransactionClient,
+    businessId: string,
+    userId: string,
+    idempotencyKey: string,
+    transaction: TransactionIntentForPreview,
+    dto: PostTransactionDto,
+  ): Promise<PostTransactionResponse> {
+    const headerErrors = validateAdjustmentHeader({
+      description: transaction.description,
+      reason: transaction.adjustmentReason,
+    });
+    this.throwAdjustmentValidationErrors(headerErrors, 'Adjustment header is invalid.');
+
+    if (!transaction.currency.trim()) {
+      throw new BadRequestException('Transaction currency is required.');
+    }
+
+    const adjustmentLines = await prisma.transactionAdjustmentLine.findMany({
+      include: { account: true },
+      orderBy: { createdAt: 'asc' },
+      where: {
+        businessId,
+        transactionId: transaction.id,
+      },
+    });
+
+    validateAdjustmentLines(
+      businessId,
+      adjustmentLines.map((line) => ({
+        accountId: line.accountId,
+        creditAmount: line.creditAmount.toFixed(2),
+        debitAmount: line.debitAmount.toFixed(2),
+        description: line.description ?? undefined,
+      })),
+      adjustmentLines.map((line) => line.account),
+    );
+
+    const builtAdjustment = buildAdjustmentPreview(adjustmentLines);
+    validateJournalLinesBalanced(builtAdjustment.lines);
+
+    const postingDate = this.resolvePostingDate(dto.postingDate, transaction.transactionDate);
+    const postedAt = new Date();
+    const journalEntry = await prisma.journalEntry.create({
+      data: {
+        businessId,
+        createdById: userId,
+        description:
+          transaction.description?.trim() ?? `Posted ADJUSTMENT transaction ${transaction.id}`,
+        idempotencyKey,
+        lines: {
+          create: builtAdjustment.lines.map((line) => ({
+            accountId: line.accountId,
+            creditAmount: line.creditAmount,
+            debitAmount: line.debitAmount,
+            description: line.description,
+          })),
+        },
+        postedAt,
+        postingDate,
+        sourceTransactionId: transaction.id,
+        status: JournalEntryStatus.POSTED,
+      },
+      include: this.journalEntryInclude(),
+    });
+
+    await prisma.transaction.update({
+      data: { status: TransactionStatus.POSTED },
+      where: { id: transaction.id },
+    });
+
+    return this.toPostResponse(
+      journalEntry,
+      builtAdjustment.warnings.map((warning) => warning.message),
+      transaction.type,
+    );
   }
 
   private async validateRelatedRecordsBelongToBusiness(
@@ -456,6 +589,19 @@ export class PostingService {
       return [];
     }
 
+    if (transaction.type === TransactionType.ADJUSTMENT) {
+      const lines = await prisma.transactionAdjustmentLine.findMany({
+        include: { account: true },
+        orderBy: { createdAt: 'asc' },
+        where: {
+          businessId,
+          transactionId,
+        },
+      });
+
+      return buildAdjustmentPreview(lines).warnings.map((warning) => warning.message);
+    }
+
     const hasProductLines = transaction.lines.some((line) => Boolean(line.productId));
 
     if (transaction.type === TransactionType.SALE && hasProductLines) {
@@ -469,6 +615,16 @@ export class PostingService {
     return [];
   }
 
+  private resolvePostingDate(postingDate: string | undefined, fallbackDate: Date): Date {
+    const resolved = postingDate ? new Date(postingDate) : fallbackDate;
+
+    if (Number.isNaN(resolved.getTime())) {
+      throw new BadRequestException('Posting date is invalid.');
+    }
+
+    return resolved;
+  }
+
   private throwValidationErrors(errors: PostingPreviewIssue[]) {
     if (errors.length > 0) {
       throw new BadRequestException({
@@ -478,9 +634,19 @@ export class PostingService {
     }
   }
 
+  private throwAdjustmentValidationErrors(errors: AdjustmentPreviewIssue[], message: string) {
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        errors,
+        message,
+      });
+    }
+  }
+
   private toPostResponse(
     journalEntry: PostedJournalEntryWithLines,
     warnings: string[],
+    transactionType: TransactionType,
   ): PostTransactionResponse {
     const totals = calculateJournalTotals(journalEntry.lines);
 
@@ -494,12 +660,14 @@ export class PostingService {
         accountName: line.account.name,
         creditAmount: line.creditAmount.toFixed(2),
         debitAmount: line.debitAmount.toFixed(2),
+        description: line.description ?? undefined,
       })),
       postedAt: journalEntry.postedAt?.toISOString() ?? journalEntry.updatedAt.toISOString(),
       status: 'POSTED',
       totalCredit: totals.totalCredit,
       totalDebit: totals.totalDebit,
       transactionId: journalEntry.sourceTransactionId ?? '',
+      transactionType,
       warnings,
     };
   }

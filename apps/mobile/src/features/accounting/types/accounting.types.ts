@@ -209,6 +209,7 @@ export interface PostedTransactionLine {
   accountName: string;
   creditAmount: string;
   debitAmount: string;
+  description?: string;
 }
 
 export interface PostTransactionResult {
@@ -221,7 +222,99 @@ export interface PostTransactionResult {
   totalCredit: string;
   totalDebit: string;
   transactionId: string;
+  transactionType: TransactionType;
   warnings: string[];
+}
+
+export interface ReversalPreviewRequest {
+  reason: string;
+  reversalDate: string;
+}
+
+export type ReversalPreviewIssueCode =
+  | 'REVERSAL_ACCOUNT_INACTIVE_OR_DELETED'
+  | 'REVERSAL_ALREADY_COMPLETED'
+  | 'REVERSAL_DATE_REQUIRED'
+  | 'REVERSAL_INVALID_DATE'
+  | 'REVERSAL_JOURNAL_NOT_FOUND'
+  | 'REVERSAL_ORIGINAL_JOURNAL_UNBALANCED'
+  | 'REVERSAL_REASON_REQUIRED'
+  | 'REVERSAL_RECONCILIATION_REQUIRED'
+  | 'REVERSAL_TRANSACTION_NOT_POSTED';
+
+export interface ReversalPreviewIssue {
+  code: ReversalPreviewIssueCode;
+  field?: string;
+  message: string;
+}
+
+export interface ReversalPreviewLine {
+  accountCode: string;
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  creditAmount: string;
+  debitAmount: string;
+  description: string;
+  originalCreditAmount: string;
+  originalDebitAmount: string;
+  originalJournalLineId: string;
+}
+
+export interface ReversalPreview {
+  businessId: string;
+  canReverse: boolean;
+  errors: ReversalPreviewIssue[];
+  isBalanced: boolean;
+  lines: ReversalPreviewLine[];
+  originalJournalEntryId: string;
+  originalJournalStatus: JournalEntryStatus;
+  reason: string;
+  reversalDate: string;
+  totalCredit: string;
+  totalDebit: string;
+  transactionId: string;
+  transactionStatus: TransactionStatus;
+  transactionType: TransactionType;
+  warnings: ReversalPreviewIssue[];
+}
+
+export type ReversalSource = 'MANUAL' | 'SYSTEM_RETRY' | 'IMPORT';
+
+export interface ReverseTransactionRequest {
+  idempotencyKey: string;
+  reason: string;
+  reversalDate: string;
+  source?: ReversalSource;
+}
+
+export interface ReverseTransactionLine {
+  accountCode: string;
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  creditAmount: string;
+  debitAmount: string;
+  description?: string;
+}
+
+export interface ReverseTransactionResult {
+  businessId: string;
+  idempotencyKey: string;
+  lines: ReverseTransactionLine[];
+  originalJournalEntryId: string;
+  originalJournalStatus: 'REVERSED';
+  reason: string;
+  reversalDate: string;
+  reversalJournalEntryId: string;
+  reversalJournalStatus: 'POSTED';
+  reversedAt: string;
+  totalCredit: string;
+  totalDebit: string;
+  transactionId: string;
+  transactionStatus: 'VOIDED';
+  transactionType: TransactionType;
+  warnings: ReversalPreviewIssue[];
 }
 
 export interface AdjustmentLine {

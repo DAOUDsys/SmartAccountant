@@ -18,12 +18,15 @@ export type BusinessPermission =
   | 'adjustments.read'
   | 'adjustments.manage'
   | 'adjustments.preview'
+  | 'adjustments.post'
   | 'journalEntries.read'
   | 'journalEntries.manage'
   | 'journalEntries.createDraft'
   | 'journalEntries.post'
   | 'journalEntries.void'
-  | 'postingPreview.read';
+  | 'postingPreview.read'
+  | 'reversals.preview'
+  | 'reversals.create';
 
 export const businessRoleOrder: Record<BusinessRole, number> = {
   [BusinessRole.OWNER]: 5,
@@ -52,12 +55,15 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'adjustments.read',
     'adjustments.manage',
     'adjustments.preview',
+    'adjustments.post',
     'journalEntries.read',
     'journalEntries.manage',
     'journalEntries.createDraft',
     'journalEntries.post',
     'journalEntries.void',
     'postingPreview.read',
+    'reversals.preview',
+    'reversals.create',
   ],
   [BusinessRole.ADMIN]: [
     'customers.read',
@@ -77,12 +83,15 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'adjustments.read',
     'adjustments.manage',
     'adjustments.preview',
+    'adjustments.post',
     'journalEntries.read',
     'journalEntries.manage',
     'journalEntries.createDraft',
     'journalEntries.post',
     'journalEntries.void',
     'postingPreview.read',
+    'reversals.preview',
+    'reversals.create',
   ],
   [BusinessRole.ACCOUNTANT]: [
     'customers.read',
@@ -102,12 +111,15 @@ export const businessRolePermissions: Record<BusinessRole, BusinessPermission[]>
     'adjustments.read',
     'adjustments.manage',
     'adjustments.preview',
+    'adjustments.post',
     'journalEntries.read',
     'journalEntries.manage',
     'journalEntries.createDraft',
     'journalEntries.post',
     'journalEntries.void',
     'postingPreview.read',
+    'reversals.preview',
+    'reversals.create',
   ],
   [BusinessRole.STAFF]: [
     'customers.read',

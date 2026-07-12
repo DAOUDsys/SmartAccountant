@@ -458,4 +458,115 @@ describe('BusinessMembershipGuard', () => {
 
     await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
   });
+
+  it('allows owners, admins, and accountants to post adjustments while denying staff and viewers', async () => {
+    const request = {
+      params: { businessId: business.id },
+      user: {
+        email: 'accountant@example.com',
+        role: 'USER',
+        userId: 'user_1',
+      },
+    };
+
+    for (const role of [BusinessRole.OWNER, BusinessRole.ADMIN, BusinessRole.ACCOUNTANT]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['adjustments.post'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
+    }
+
+    for (const role of [BusinessRole.STAFF, BusinessRole.VIEWER]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['adjustments.post'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    }
+  });
+
+  it('allows owners, admins, and accountants to preview reversals while denying staff and viewers', async () => {
+    const request = {
+      params: { businessId: business.id },
+      user: {
+        email: 'accountant@example.com',
+        role: 'USER',
+        userId: 'user_1',
+      },
+    };
+
+    for (const role of [BusinessRole.OWNER, BusinessRole.ADMIN, BusinessRole.ACCOUNTANT]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['reversals.preview'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
+    }
+
+    for (const role of [BusinessRole.STAFF, BusinessRole.VIEWER]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['reversals.preview'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    }
+  });
+
+  it('allows owners, admins, and accountants to create reversals while denying staff and viewers', async () => {
+    const request = {
+      params: { businessId: business.id },
+      user: {
+        email: 'accountant@example.com',
+        role: 'USER',
+        userId: 'user_1',
+      },
+    };
+
+    for (const role of [BusinessRole.OWNER, BusinessRole.ADMIN, BusinessRole.ACCOUNTANT]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['reversals.create'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
+    }
+
+    for (const role of [BusinessRole.STAFF, BusinessRole.VIEWER]) {
+      const { guard } = createGuard({
+        membership: {
+          ...activeMembership,
+          role,
+        },
+        requiredPermissions: ['reversals.create'],
+      });
+
+      await expect(guard.canActivate(createContext(request))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    }
+  });
 });

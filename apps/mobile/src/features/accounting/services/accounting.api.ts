@@ -10,6 +10,10 @@ import type {
   PostingPreview,
   Product,
   ReplaceAdjustmentLinesRequest,
+  ReverseTransactionRequest,
+  ReverseTransactionResult,
+  ReversalPreview,
+  ReversalPreviewRequest,
   Supplier,
   Transaction,
 } from '../types/accounting.types';
@@ -106,6 +110,32 @@ export const accountingApi = {
   ) {
     return request<PostTransactionResult>(
       `/businesses/${businessId}/transactions/${transactionId}/post`,
+      accessToken,
+      { body, method: 'POST' },
+    );
+  },
+
+  reversalPreview(
+    accessToken: string,
+    businessId: string,
+    transactionId: string,
+    body: ReversalPreviewRequest,
+  ) {
+    return request<ReversalPreview>(
+      `/businesses/${businessId}/transactions/${transactionId}/reversal-preview`,
+      accessToken,
+      { body, method: 'POST' },
+    );
+  },
+
+  reverseTransaction(
+    accessToken: string,
+    businessId: string,
+    transactionId: string,
+    body: ReverseTransactionRequest,
+  ) {
+    return request<ReverseTransactionResult>(
+      `/businesses/${businessId}/transactions/${transactionId}/reverse`,
       accessToken,
       { body, method: 'POST' },
     );

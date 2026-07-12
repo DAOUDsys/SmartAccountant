@@ -1,7 +1,13 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AccountMappingKey,
   AccountType,
+  BusinessRole,
   JournalEntryStatus,
   NormalBalance,
   TransactionStatus,
@@ -177,6 +183,10 @@ function journalEntry(
     ],
     postedAt: now,
     postingDate: now,
+    reversedAt: null,
+    reversedById: null,
+    reversalReason: null,
+    reversesJournalEntryId: null,
     sourceTransactionId: 'transaction_1',
     status: JournalEntryStatus.POSTED,
     updatedAt: now,
@@ -186,12 +196,55 @@ function journalEntry(
   };
 }
 
+function adjustmentLine(
+  input: {
+    accountValue: Account;
+    creditAmount?: string;
+    debitAmount?: string;
+    description?: string;
+    id: string;
+  },
+  overrides = {},
+) {
+  return {
+    account: input.accountValue,
+    accountId: input.accountValue.id,
+    businessId: 'business_1',
+    createdAt: now,
+    creditAmount: new Decimal(input.creditAmount ?? '0'),
+    debitAmount: new Decimal(input.debitAmount ?? '0'),
+    description: input.description ?? null,
+    id: input.id,
+    transactionId: 'transaction_1',
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function balancedAdjustmentLines() {
+  return [
+    adjustmentLine({
+      accountValue: account(AccountMappingKey.CASH),
+      debitAmount: '100.00',
+      description: 'Debit Cash',
+      id: 'adjustment_line_1',
+    }),
+    adjustmentLine({
+      accountValue: account(AccountMappingKey.OWNER_EQUITY),
+      creditAmount: '100.00',
+      description: 'Credit Owner Equity',
+      id: 'adjustment_line_2',
+    }),
+  ];
+}
+
 function createPrismaMock(
   options: {
     existingByKey?: PostedJournalEntryWithLines | null;
     existingForTransaction?: PostedJournalEntryWithLines | null;
     failJournalCreate?: boolean;
     failTransactionUpdate?: boolean;
+    adjustmentLines?: ReturnType<typeof balancedAdjustmentLines>;
     mappings?: ReturnType<typeof accountMappings>;
     productCount?: number;
     customerFound?: boolean;
@@ -292,6 +345,9 @@ function createPrismaMock(
         return Promise.resolve({ ...(transactionValue ?? {}), status: TransactionStatus.POSTED });
       }),
     },
+    transactionAdjustmentLine: {
+      findMany: vi.fn().mockResolvedValue(options.adjustmentLines ?? []),
+    },
   };
   const prisma = {
     ...tx,
@@ -301,8 +357,8 @@ function createPrismaMock(
   return { prisma, tx };
 }
 
-function serviceCall(service: PostingService, dto = {}) {
-  return service.postTransaction('business_1', 'transaction_1', 'user_1', {
+function serviceCall(service: PostingService, dto = {}, role: BusinessRole = BusinessRole.OWNER) {
+  return service.postTransaction('business_1', 'transaction_1', 'user_1', role, {
     idempotencyKey: 'post-key-1',
     source: PostingSource.MANUAL,
     ...dto,
@@ -561,6 +617,447 @@ describe('PostingService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('posts a valid two-line ADJUSTMENT from stored adjustment lines', async () => {
+    const { prisma, tx } = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      transactionValue: transaction({
+        adjustmentReason: 'Owner contribution',
+        description: 'Opening balance adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const service = new PostingService(prisma as never);
+
+    const result = await serviceCall(service);
+
+    expect(result).toMatchObject({
+      status: 'POSTED',
+      totalCredit: '100.00',
+      totalDebit: '100.00',
+      transactionId: 'transaction_1',
+      transactionType: TransactionType.ADJUSTMENT,
+    });
+    expect(result.lines).toMatchObject([
+      {
+        accountName: 'Cash',
+        creditAmount: '0.00',
+        debitAmount: '100.00',
+        description: 'Debit Cash',
+      },
+      {
+        accountName: 'Owner Equity',
+        creditAmount: '100.00',
+        debitAmount: '0.00',
+        description: 'Credit Owner Equity',
+      },
+    ]);
+    expect(result.warnings).toContain(
+      'This adjustment uses a system account. Review carefully before posting.',
+    );
+    expect(tx.journalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          description: 'Opening balance adjustment',
+          status: JournalEntryStatus.POSTED,
+          sourceTransactionId: 'transaction_1',
+        }),
+      }),
+    );
+    expect(tx.transaction.update).toHaveBeenCalledWith({
+      data: { status: TransactionStatus.POSTED },
+      where: { id: 'transaction_1' },
+    });
+  });
+
+  it('posts a valid multi-line ADJUSTMENT and keeps debits equal to credits', async () => {
+    const lines = [
+      adjustmentLine({
+        accountValue: account(AccountMappingKey.CASH),
+        debitAmount: '120.00',
+        id: 'adjustment_line_1',
+      }),
+      adjustmentLine({
+        accountValue: account(AccountMappingKey.ACCOUNTS_RECEIVABLE),
+        debitAmount: '80.00',
+        id: 'adjustment_line_2',
+      }),
+      adjustmentLine({
+        accountValue: account(AccountMappingKey.OWNER_EQUITY),
+        creditAmount: '200.00',
+        id: 'adjustment_line_3',
+      }),
+    ];
+    const { prisma } = createPrismaMock({
+      adjustmentLines: lines,
+      transactionValue: transaction({
+        adjustmentReason: 'Opening balances',
+        description: 'Opening balances adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const service = new PostingService(prisma as never);
+
+    const result = await serviceCall(service);
+
+    expect(result.lines).toHaveLength(3);
+    expect(result.totalDebit).toBe('200.00');
+    expect(result.totalCredit).toBe('200.00');
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        'This adjustment uses Accounts Receivable. Review carefully before posting.',
+        'This adjustment uses Owner Equity. Review carefully before posting.',
+      ]),
+    );
+  });
+
+  it.each([
+    {
+      name: 'missing reason',
+      transactionValue: transaction({
+        adjustmentReason: ' ',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: balancedAdjustmentLines(),
+    },
+    {
+      name: 'fewer than two lines',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [balancedAdjustmentLines()[0]!],
+    },
+    {
+      name: 'unbalanced lines',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH),
+          debitAmount: '100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '90.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'zero-value line',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH),
+          debitAmount: '0.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'both-sided line',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH),
+          creditAmount: '20.00',
+          debitAmount: '100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'negative amount',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH),
+          debitAmount: '-100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'cross-tenant account',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH, { businessId: 'other_business' }),
+          debitAmount: '100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'inactive account',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH, { isActive: false }),
+          debitAmount: '100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+    {
+      name: 'deleted account',
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+      lines: [
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.CASH, { deletedAt: now }),
+          debitAmount: '100.00',
+          id: 'adjustment_line_1',
+        }),
+        adjustmentLine({
+          accountValue: account(AccountMappingKey.OWNER_EQUITY),
+          creditAmount: '100.00',
+          id: 'adjustment_line_2',
+        }),
+      ],
+    },
+  ])('rejects invalid ADJUSTMENT posting: $name', async ({ transactionValue, lines }) => {
+    const { prisma, tx } = createPrismaMock({
+      adjustmentLines: lines,
+      transactionValue,
+    });
+    const service = new PostingService(prisma as never);
+
+    await expect(serviceCall(service)).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.journalEntry.create).not.toHaveBeenCalled();
+    expect(tx.transaction.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-DRAFT ADJUSTMENT posting and historical POSTED adjustments without a journal', async () => {
+    const voided = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        status: TransactionStatus.VOIDED,
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const historicalPosted = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        status: TransactionStatus.POSTED,
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+
+    await expect(serviceCall(new PostingService(voided.prisma as never))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(
+      serviceCall(new PostingService(historicalPosted.prisma as never)),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(voided.tx.journalEntry.create).not.toHaveBeenCalled();
+    expect(historicalPosted.tx.journalEntry.create).not.toHaveBeenCalled();
+  });
+
+  it('enforces adjustments.post permission by role', async () => {
+    const allowedRoles = [BusinessRole.OWNER, BusinessRole.ADMIN, BusinessRole.ACCOUNTANT];
+    const deniedRoles = [BusinessRole.STAFF, BusinessRole.VIEWER];
+
+    for (const role of allowedRoles) {
+      const { prisma } = createPrismaMock({
+        adjustmentLines: balancedAdjustmentLines(),
+        transactionValue: transaction({
+          adjustmentReason: 'Reason',
+          description: 'Adjustment',
+          lines: [],
+          type: TransactionType.ADJUSTMENT,
+        }),
+      });
+
+      await expect(
+        serviceCall(new PostingService(prisma as never), {}, role),
+      ).resolves.toMatchObject({
+        transactionType: TransactionType.ADJUSTMENT,
+      });
+    }
+
+    for (const role of deniedRoles) {
+      const { prisma, tx } = createPrismaMock({
+        adjustmentLines: balancedAdjustmentLines(),
+        transactionValue: transaction({
+          adjustmentReason: 'Reason',
+          description: 'Adjustment',
+          lines: [],
+          type: TransactionType.ADJUSTMENT,
+        }),
+      });
+
+      await expect(
+        serviceCall(new PostingService(prisma as never), {}, role),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(tx.journalEntry.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps ADJUSTMENT posting idempotent and rejects duplicate posting keys', async () => {
+    const existing = journalEntry({
+      lines: [
+        {
+          account: account(AccountMappingKey.CASH),
+          accountId: account(AccountMappingKey.CASH).id,
+          createdAt: now,
+          creditAmount: new Decimal(0),
+          debitAmount: new Decimal(100),
+          description: 'Debit Cash',
+          id: 'adjustment_journal_line_1',
+          journalEntryId: 'journal_1',
+          updatedAt: now,
+        },
+        {
+          account: account(AccountMappingKey.OWNER_EQUITY),
+          accountId: account(AccountMappingKey.OWNER_EQUITY).id,
+          createdAt: now,
+          creditAmount: new Decimal(100),
+          debitAmount: new Decimal(0),
+          description: 'Credit Owner Equity',
+          id: 'adjustment_journal_line_2',
+          journalEntryId: 'journal_1',
+          updatedAt: now,
+        },
+      ],
+    });
+    const retry = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      existingByKey: existing,
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        status: TransactionStatus.POSTED,
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const sameKeyDifferentTransaction = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      existingByKey: journalEntry({ sourceTransactionId: 'transaction_2' }),
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const differentKeyAfterPosting = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      existingForTransaction: existing,
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        status: TransactionStatus.POSTED,
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+
+    await expect(serviceCall(new PostingService(retry.prisma as never))).resolves.toMatchObject({
+      journalEntryId: existing.id,
+      transactionType: TransactionType.ADJUSTMENT,
+    });
+    expect(retry.tx.journalEntry.create).not.toHaveBeenCalled();
+    await expect(
+      serviceCall(new PostingService(sameKeyDifferentTransaction.prisma as never)),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      serviceCall(new PostingService(differentKeyAfterPosting.prisma as never), {
+        idempotencyKey: 'different-key',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('does not update an ADJUSTMENT transaction when journal creation fails', async () => {
+    const { prisma, tx } = createPrismaMock({
+      adjustmentLines: balancedAdjustmentLines(),
+      failJournalCreate: true,
+      transactionValue: transaction({
+        adjustmentReason: 'Reason',
+        description: 'Adjustment',
+        lines: [],
+        type: TransactionType.ADJUSTMENT,
+      }),
+    });
+    const service = new PostingService(prisma as never);
+
+    await expect(serviceCall(service)).rejects.toThrow('forced journal create failure');
+
+    expect(tx.transaction.update).not.toHaveBeenCalled();
+  });
+
   it('keeps payment posting idempotent and prevents duplicate payment journals', async () => {
     const existing = journalEntry({
       lines: [
@@ -673,7 +1170,7 @@ describe('PostingService', () => {
     const service = new PostingService(prisma as never);
 
     await expect(
-      service.postTransaction('business_1', 'transaction_1', 'user_1', {
+      service.postTransaction('business_1', 'transaction_1', 'user_1', BusinessRole.OWNER, {
         idempotencyKey: '',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -751,8 +1248,10 @@ describe('PostingService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it.each([TransactionType.ADJUSTMENT])('rejects unsupported %s posting safely', async (type) => {
-    const { prisma, tx } = createPrismaMock({ transactionValue: transaction({ type }) });
+  it('rejects ADJUSTMENT posting when stored adjustment lines are missing', async () => {
+    const { prisma, tx } = createPrismaMock({
+      transactionValue: transaction({ type: TransactionType.ADJUSTMENT }),
+    });
     const service = new PostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toBeInstanceOf(BadRequestException);

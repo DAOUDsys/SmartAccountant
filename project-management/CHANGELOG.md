@@ -1,5 +1,165 @@
 # Changelog
 
+## 0.1.22 - 2026-07-12
+
+### Added
+
+- Added atomic financial reversal execution through `POST /businesses/:businessId/transactions/:transactionId/reverse`.
+- Added `reversals.create`, allowed for OWNER, ADMIN, and ACCOUNTANT and denied for STAFF and VIEWER.
+- Added reversal execution validation for required reason, reversal date, and idempotency key.
+- Added safe reversal source values: `MANUAL`, `SYSTEM_RETRY`, and `IMPORT`.
+- Added a reversal service that creates a POSTED reversing `JournalEntry` and swapped `JournalLine` records from the original posted journal.
+- Added atomic updates that mark the original journal `REVERSED` and the source transaction `VOIDED` with reversal/void metadata.
+- Added idempotent same-key retry handling, idempotency-conflict detection, and concurrent duplicate-reversal protection.
+- Added minimal mobile reverse-transaction request/response types and API method without adding mobile UI.
+- Added focused backend coverage for reversal execution across `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, `SUPPLIER_PAYMENT`, and stored-line `ADJUSTMENT`.
+
+### Changed
+
+- Shared reversal validation between preview and execution so both paths enforce the same original-journal safety gates.
+- Kept reversal preview non-persisted, direct generic POSTED void blocked, and DRAFT cancellation unchanged.
+
+### Verified
+
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed with 21 files and 194 tests.
+- `npm.cmd run prisma:validate` passed when the local development `DATABASE_URL` was provided.
+- `npm.cmd run prisma:generate` passed.
+
+### Blocked Verification
+
+- `docker compose up -d postgres` could not start PostgreSQL because Docker Desktop is not running in this session.
+- `localhost:5432` is not accepting TCP connections, so final live API smoke, Prisma migration status against the live database, and direct database inspection are pending.
+
+### Boundary Notes
+
+- No new Prisma migration was created for reversal execution; it uses the existing reversal relation and void metadata schema.
+- No inventory movement reversal, sale COGS reversal, audit log, accounting period lock, approval workflow, AI orchestration, chat persistence, report, PDF, dashboard, or mobile reversal UI was added.
+- `Transaction.status = POSTED` remains ledger-trustworthy only when produced by the approved posting endpoint with a matching POSTED `JournalEntry` and balanced `JournalLine` records.
+
+### Pending
+
+- Run final live reversal smoke and direct database inspection once Docker Desktop/PostgreSQL is available.
+- Audit logs, accounting periods, inventory movement reversal, approval workflows, request-hash idempotency comparison, and AI-assisted reversal remain later phases.
+
+## 0.1.21 - 2026-07-11
+
+### Added
+
+- Added migration `20260711220000_add_reversal_relations`.
+- Added nullable `JournalEntry` reversal relation metadata: `reversesJournalEntryId`, `reversalReason`, `reversedAt`, and `reversedById`.
+- Added an explicit Prisma self-relation so a future reversing journal can point to the original journal.
+- Added a unique constraint on `JournalEntry.reversesJournalEntryId` so one original journal can have at most one reversing journal.
+- Added nullable `Transaction` void metadata: `voidReason`, `voidedAt`, and `voidedById`.
+- Added `reversals.preview`, allowed for OWNER, ADMIN, and ACCOUNTANT and denied for STAFF and VIEWER.
+- Added `POST /businesses/:businessId/transactions/:transactionId/reversal-preview`.
+- Added a non-persisted reversal preview service that resolves the original source-linked POSTED journal and swaps every original debit and credit line in memory.
+- Added minimal mobile reversal preview request/response types and API method.
+
+### Changed
+
+- Hardened the generic transaction void endpoint so DRAFT transactions can still be cancelled, but POSTED transactions are rejected with `POSTED_TRANSACTION_REQUIRES_REVERSAL`.
+
+### Verified
+
+- Preview requires a POSTED transaction, a non-blank reason, a valid reversal date, exactly one source-linked original journal, POSTED original journal status, balanced original lines, same-business accounts, and no existing reversal relation.
+- Preview uses the posted `JournalEntry` and `JournalLine` records as the source of truth and does not use account mappings, transaction lines, or adjustment intent lines.
+- Preview creates no `JournalEntry`, creates no `JournalLine`, changes no transaction status, changes no journal status, mutates no original lines, creates no reversal relation metadata, and changes no product quantity.
+- Live smoke passed against Docker PostgreSQL and the running NestJS backend: SALE reversal preview balanced and swapped debit/credit, journal count stayed unchanged, direct POSTED void returned 409 and left transaction/journal POSTED, DRAFT cancellation still returned VOIDED, cross-tenant preview/void were denied with 403, POSTED ADJUSTMENT reversal preview balanced, and product quantity stayed `7`.
+- `docker compose up -d postgres` passed.
+- `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports seven migrations and an up-to-date database.
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed with 20 files and 175 tests.
+- `npm.cmd run prisma:validate` passed.
+- `npm.cmd run prisma:generate` passed.
+
+### Boundary Notes
+
+- No actual reversal execution was implemented.
+- No reversing `JournalEntry` or `JournalLine` records are created by preview.
+- No POSTED `JournalEntry` is changed to `REVERSED`.
+- No POSTED `Transaction` is changed to `VOIDED` through reversal preview.
+- No inventory movement, sale COGS posting, audit logs, accounting periods, approval workflow, AI orchestration, chat persistence, reports, PDFs, dashboards, budgets, goals, bank connections, OCR, or mobile reversal UI were added.
+- Request-hash idempotency comparison remains future work.
+
+### Pending
+
+- Next recommended implementation task is atomic financial reversal execution using the approved relation fields and a required idempotency key.
+- Audit logs, accounting periods, inventory movement reversal, approval workflows, and AI-assisted reversal remain later phases.
+
+## 0.1.20 - 2026-07-11
+
+### Added
+
+- Added `REVERSAL_VOID_DESIGN.md` as the source-of-truth design for safe draft cancellation, posted transaction reversal, journal void semantics, and future inventory-affecting reversals.
+- Defined the core immutability rule: posted ledger records are corrected by reversing journal entries, never by deleting or editing original posted journal lines.
+- Defined separate terminology and workflows for DRAFT cancellation, POSTED reversal, and journal voiding.
+- Documented the current unsafe behavior where the early generic transaction void endpoint can directly mark a POSTED transaction `VOIDED` without creating a reversing journal.
+- Recommended future reversal data model links on `JournalEntry` and future void metadata on `Transaction`.
+- Defined future reversal service contract, endpoint design, non-persisted reversal preview, atomic reversal posting, idempotency rules, permissions, status transitions, safety gates, transaction-type behavior, inventory boundary, accounting period boundary, audit boundary, safe errors, AI boundary, testing plan, and implementation phases.
+
+### Verified
+
+- This phase is documentation/design only.
+- Stored-line ADJUSTMENT posting remains the approved current posting capability.
+- No Prisma schema change or migration was created.
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed with 19 files and 155 tests.
+- `npm.cmd run prisma:validate` passed with a local development `DATABASE_URL`.
+- `npm.cmd run prisma:generate` passed with a local development `DATABASE_URL`.
+- `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports the database schema is up to date with the existing six migrations.
+- No reversal API, reversal service logic, status mutation behavior, posted journal editing, inventory movement, COGS posting, audit log, accounting period, approval workflow, AI orchestration, chat persistence, report, PDF, dashboard, or mobile reversal UI was implemented.
+
+### Pending
+
+- Next recommended implementation task is reversal relation schema plus non-persisted reversal preview.
+- Atomic financial reversal implementation remains future work after schema links and preview.
+- Audit logs, accounting periods, inventory movement reversal, approval workflows, and AI-assisted reversal remain later phases.
+
+## 0.1.19 - 2026-07-11
+
+### Added
+
+- Added stored-line `ADJUSTMENT` posting through the existing `POST /businesses/:businessId/transactions/:transactionId/post` endpoint.
+- Added dedicated `adjustments.post` permission for OWNER, ADMIN, and ACCOUNTANT.
+- Added posting-time revalidation of the ADJUSTMENT header, currency, stored adjustment lines, same-business active accounts, one-sided positive debit/credit amounts, and balanced totals inside the Prisma transaction.
+- Added atomic ADJUSTMENT posting that creates one POSTED `JournalEntry`, creates `JournalLine` records from stored `TransactionAdjustmentLine` rows, and updates the source `Transaction.status` to `POSTED`.
+- Added ADJUSTMENT response support for `transactionType` and posted line descriptions.
+- Added focused backend coverage for valid two-line and multi-line ADJUSTMENT posting, invalid stored lines, non-DRAFT rejection, role enforcement, idempotent retry, duplicate prevention, and atomic rollback on journal creation failure.
+
+### Changed
+
+- Kept non-adjustment posting on `journalEntries.post`, while ADJUSTMENT posting now requires `adjustments.post`.
+- Kept ADJUSTMENT posting sourced only from persisted `TransactionAdjustmentLine` records; the post request does not accept arbitrary journal lines.
+- Kept account mappings out of ADJUSTMENT posting so the system does not guess debit or credit accounts.
+
+### Verified
+
+- No Prisma migration was created or required for this phase.
+- `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports the database schema is up to date.
+- `npm.cmd run lint` passed.
+- `npm.cmd run build` passed.
+- Focused adjustment/posting tests passed with 3 files and 63 tests.
+- Full `npm.cmd run test` passed with 19 files and 155 tests.
+- `npm.cmd run prisma:validate` passed.
+- `npm.cmd run prisma:generate` passed.
+- Live ADJUSTMENT posting smoke passed against the running NestJS backend and Docker PostgreSQL: stored adjustment lines previewed as balanced, preview created zero journals, posting returned `transactionType = ADJUSTMENT`, posted two lines totaling `100.00` debit and `100.00` credit, retrying the same idempotency key returned the same journal, a different key after posting returned 409, a non-member was denied with 403, unbalanced stored lines were rejected with 400, product quantity stayed unchanged, and direct database inspection confirmed the posted journal lines matched the stored adjustment lines.
+
+### Boundary Notes
+
+- `Transaction.status = POSTED` is ledger-trustworthy only for postings created by the approved posting endpoint with a matching POSTED `JournalEntry` and balanced `JournalLine` records.
+- ADJUSTMENT posting does not accept arbitrary journal lines in the request body.
+- ADJUSTMENT posting does not guess accounts and does not use `AccountMapping`.
+- No reversals, voiding of posted journals, inventory movement automation, sale COGS posting, audit logs, accounting periods, approval workflows, AI orchestration, chat persistence, reports, PDFs, dashboards, budgets, goals, bank connections, OCR, or mobile adjustment UI were added.
+
+### Pending
+
+- Request-hash storage for stronger idempotency payload comparison remains future work.
+- Posted journal reversal/void workflows, accounting periods, audit logs, approval flows, inventory movements, COGS posting, AI tool execution, ledger-backed reports, PDFs, dashboards, and mobile posting UI remain future work.
+
 ## 0.1.18 - 2026-07-11
 
 ### Added
@@ -15,7 +175,7 @@
 - Added validation for explicit adjustment lines, same-business active accounts, non-negative one-sided debit/credit amounts, balanced totals, required description, required reason, and DRAFT ADJUSTMENT status.
 - Added preview-only ADJUSTMENT response lines with sensitive-account warnings.
 - Added minimal mobile adjustment line and adjustment preview types plus API methods.
-- Added focused backend tests for adjustment line storage, tenant scoping, validation failures, permissions, preview behavior, no ledger persistence, and existing ADJUSTMENT posting rejection.
+- Added focused backend tests for adjustment line storage, tenant scoping, validation failures, permissions, preview behavior, no ledger persistence, and the pre-posting-phase rejection behavior.
 
 ### Verified
 
@@ -33,7 +193,7 @@
 - Docker/PostgreSQL was restored with `docker compose up -d postgres`; `smartaccountant_dev` accepts connections on `localhost:5432`.
 - `npx.cmd prisma migrate deploy --schema apps/backend/prisma/schema.prisma` reports no pending migrations after applying `20260711161000_add_adjustment_lines`.
 - `npx.cmd prisma migrate status --schema apps/backend/prisma/schema.prisma` reports the database schema is up to date.
-- Live ADJUSTMENT smoke test passed against the running NestJS backend and Docker PostgreSQL: user A registration, default business/accounts, DRAFT ADJUSTMENT creation, Cash debit and Owner Equity credit line save/readback, balanced preview, sensitive-account warnings, safe ADJUSTMENT posting rejection, user B cross-tenant denial, unbalanced-line rejection, and unchanged product quantity.
+- Live ADJUSTMENT line/preview smoke test passed against the running NestJS backend and Docker PostgreSQL: user A registration, default business/accounts, DRAFT ADJUSTMENT creation, Cash debit and Owner Equity credit line save/readback, balanced preview, sensitive-account warnings, pre-posting-phase ADJUSTMENT post rejection, user B cross-tenant denial, unbalanced-line rejection, and unchanged product quantity.
 - Direct database inspection passed: `TransactionAdjustmentLine` table exists, `Transaction.adjustmentReason` column exists, stored lines reference the correct business and transaction, no `JournalEntry` was created, no `JournalLine` was created, the transaction remained `DRAFT`, and no `InventoryMovement` or `AuditLog` tables exist.
 - ADJUSTMENT line schema + preview foundation is approved.
 
@@ -50,12 +210,12 @@
 - ADJUSTMENT preview does not create `JournalEntry`.
 - ADJUSTMENT preview does not create `JournalLine`.
 - ADJUSTMENT preview does not update `Transaction.status`.
-- ADJUSTMENT posting remains blocked in the existing posting endpoint.
+- ADJUSTMENT posting was intentionally out of scope for version `0.1.18`; it was implemented later in version `0.1.19`.
 - No reversals, inventory movement automation, sale COGS posting, audit logs, accounting periods, AI orchestration, chat persistence, reports, PDFs, dashboards, budgets, goals, bank connections, OCR, or mobile adjustment UI were added.
 
 ### Pending
 
-- ADJUSTMENT posting remains future work and requires separate approval.
+- ADJUSTMENT posting was future work at the end of version `0.1.18` and was implemented later in version `0.1.19`.
 
 ## 0.1.17 - 2026-07-11
 
@@ -84,7 +244,7 @@
 
 - ADJUSTMENT preview implementation remains future work.
 - Future implementation should start with an approved adjustment line schema/DTO and non-persisted preview validation.
-- ADJUSTMENT posting remains blocked until explicit adjustment lines and preview validation are implemented and approved.
+- ADJUSTMENT posting was blocked at the end of version `0.1.17` until explicit adjustment lines and preview validation were implemented and approved in later phases.
 - Reversals, inventory movement automation, sale COGS posting, audit logs, accounting periods, AI tool execution, ledger-backed reports, PDFs, dashboards, and mobile posting UI remain future work.
 
 ## 0.1.16 - 2026-07-11

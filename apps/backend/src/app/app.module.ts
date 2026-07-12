@@ -11,6 +11,7 @@ import { JournalsModule } from '../features/journals/journals.module';
 import { PostingModule } from '../features/posting';
 import { ProductsModule } from '../features/products/products.module';
 import { ReportsModule } from '../features/reports/reports.module';
+import { ReversalsModule } from '../features/reversals';
 import { SuppliersModule } from '../features/suppliers/suppliers.module';
 import { TransactionsModule } from '../features/transactions/transactions.module';
 import { HealthModule } from '../health/health.module';
@@ -34,6 +35,7 @@ import { appConfig, validateEnvironment } from '../config/app.config';
     CustomersModule,
     JournalsModule,
     PostingModule,
+    ReversalsModule,
     SuppliersModule,
     ProductsModule,
     TransactionsModule,

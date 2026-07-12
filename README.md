@@ -63,7 +63,7 @@ Generate the Prisma client:
 npm run prisma:generate
 ```
 
-Apply local database migrations. The current local migration history includes `20260709234821_init_auth`, `20260710151650_add_tenancy_foundation`, `20260710222110_add_accounting_foundation`, `20260710231017_add_chart_of_accounts`, and `20260710233859_add_journal_foundation`:
+Apply local database migrations. The current local migration history includes auth, tenancy, accounting foundation, chart of accounts, journal foundation, adjustment lines, and reversal relation migrations through `20260711220000_add_reversal_relations`:
 
 ```bash
 npx prisma migrate dev --schema apps/backend/prisma/schema.prisma
@@ -154,20 +154,25 @@ Current accounting endpoints:
 - `/businesses/:businessId/transactions/:transactionId/adjustment-lines`: `GET`, `PUT`
 - `/businesses/:businessId/transactions/:transactionId/adjustment-preview`: `POST`
 - `/businesses/:businessId/transactions/:transactionId/post`: `POST`
+- `/businesses/:businessId/transactions/:transactionId/reversal-preview`: `POST`
 
 New businesses receive default system accounts for Cash, Accounts Receivable, Inventory Asset, Accounts Payable, Owner Equity, Sales Revenue, Cost of Goods Sold, and General Expense. Default mappings connect future posting configuration keys to those accounts.
 
-Posting previews validate draft transaction intents, required account mappings, same-business references, and hypothetical debit/credit balance for `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, and `SUPPLIER_PAYMENT`. `ADJUSTMENT` previews are blocked until explicit debit and credit accounts are designed. The preview endpoint requires `postingPreview.read` and returns `canPost`, preview lines, mappings used, warnings, and errors without creating journals.
+Posting previews validate draft transaction intents, required account mappings, same-business references, and hypothetical debit/credit balance for `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, and `SUPPLIER_PAYMENT`. The preview endpoint requires `postingPreview.read` and returns `canPost`, preview lines, mappings used, warnings, and errors without creating journals.
 
 Adjustment line storage is available for future-safe ADJUSTMENT workflows. `PUT /businesses/:businessId/transactions/:transactionId/adjustment-lines` replaces explicit debit/credit adjustment lines for a DRAFT ADJUSTMENT transaction, stores `adjustmentReason`, and validates same-business active accounts plus balanced debit/credit totals. `POST /businesses/:businessId/transactions/:transactionId/adjustment-preview` returns a preview-only set of hypothetical journal lines from stored adjustment lines and may include sensitive-account warnings. It does not create `JournalEntry`, create `JournalLine`, or update `Transaction.status`.
 
-Core posting currently supports `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, and `SUPPLIER_PAYMENT`. `POST /businesses/:businessId/transactions/:transactionId/post` requires `journalEntries.post`, an `idempotencyKey`, and an optional `postingDate`; it creates a POSTED `JournalEntry`, creates balanced `JournalLine` records, and updates the source transaction status to `POSTED` in one database transaction. Retrying the same idempotency key for the same transaction returns the existing posted journal; reusing the key for another transaction is rejected.
+Core posting currently supports `SALE`, `EXPENSE`, `PURCHASE`, `CUSTOMER_PAYMENT`, `SUPPLIER_PAYMENT`, and stored-line `ADJUSTMENT` transactions. `POST /businesses/:businessId/transactions/:transactionId/post` requires `journalEntries.post` for non-adjustment posting or `adjustments.post` for ADJUSTMENT posting, an `idempotencyKey`, and an optional `postingDate`; it creates a POSTED `JournalEntry`, creates balanced `JournalLine` records, and updates the source transaction status to `POSTED` in one database transaction. Retrying the same idempotency key for the same transaction returns the existing posted journal; reusing the key for another transaction is rejected.
 
 Payment posting uses narrow general AR/AP rules only. `CUSTOMER_PAYMENT` requires a same-business `customerId`, debits Cash, and credits Accounts Receivable. `SUPPLIER_PAYMENT` requires a same-business `supplierId`, debits Accounts Payable, and credits Cash. It does not allocate payments to invoices, update customer or supplier statements, calculate AR/AP aging, or reconcile balances yet.
 
+ADJUSTMENT posting uses only stored `TransactionAdjustmentLine` records. The post request does not accept arbitrary journal lines, does not infer accounts, and does not use account mappings. The posting service reloads the adjustment header and stored lines inside the database transaction, revalidates required description/reason/currency, same-business active accounts, one-sided positive debit/credit lines, and balanced totals, then posts the stored lines atomically.
+
+Reversal preview is available through `POST /businesses/:businessId/transactions/:transactionId/reversal-preview` with a required reason and reversal date. It requires `reversals.preview`, allowed for OWNER, ADMIN, and ACCOUNTANT. The preview resolves the original source-linked POSTED journal, treats posted `JournalLine` records as the source of truth, swaps every original debit and credit in memory, returns balanced preview lines, and performs no database writes. The generic transaction void endpoint still supports DRAFT cancellation, but rejects direct void attempts for POSTED transactions with a reversal-required conflict so ledger-backed posted records remain unchanged.
+
 Draft journal creation remains separate from posting. `Transaction.status = POSTED` is ledger-trustworthy only when produced by the approved posting endpoint with a matching posted journal entry. Existing historical transaction-intent `POSTED` records without a matching posted journal require reconciliation and are not treated as ledger truth.
 
-Adjustment posting is not implemented yet and `POST /businesses/:businessId/transactions/:transactionId/post` still rejects `ADJUSTMENT` safely. Posting does not automate inventory movements, post COGS for sales, write audit logs, call AI tools, generate reports, export PDFs, build dashboards, connect bank/OCR flows, add budgets/goals, add mobile posting UI, or persist chat messages.
+Posting and reversal preview do not automate inventory movements, create reversing journals, mark journals `REVERSED`, update POSTED transactions to `VOIDED`, post COGS for sales, write audit logs, enforce accounting periods, run approval workflows, call AI tools, generate reports, export PDFs, build dashboards, connect bank/OCR flows, add budgets/goals, add mobile reversal UI, or persist chat messages.
 
 ## Continuous Integration
 

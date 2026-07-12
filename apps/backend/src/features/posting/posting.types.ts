@@ -1,4 +1,4 @@
-import type { Account, JournalEntry, JournalLine } from '@prisma/client';
+import type { Account, JournalEntry, JournalLine, TransactionType } from '@prisma/client';
 
 export interface PostedTransactionLineResponse {
   accountCode: string;
@@ -6,6 +6,7 @@ export interface PostedTransactionLineResponse {
   accountName: string;
   creditAmount: string;
   debitAmount: string;
+  description?: string;
 }
 
 export interface PostTransactionResponse {
@@ -18,6 +19,7 @@ export interface PostTransactionResponse {
   totalCredit: string;
   totalDebit: string;
   transactionId: string;
+  transactionType: TransactionType;
   warnings: string[];
 }
 

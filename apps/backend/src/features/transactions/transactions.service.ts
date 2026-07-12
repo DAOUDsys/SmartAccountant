@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TransactionStatus, type Transaction, type TransactionLine } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { reversalConflict } from '../reversals/reversal.errors';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
 import type { TransactionLineDto } from './dto/transaction-line.dto';
 import type { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -142,7 +143,18 @@ export class TransactionsService {
   }
 
   async voidTransaction(businessId: string, transactionId: string): Promise<TransactionResponse> {
-    await this.findActiveTransaction(businessId, transactionId);
+    const existing = await this.findActiveTransaction(businessId, transactionId);
+
+    if (existing.status === TransactionStatus.POSTED) {
+      throw reversalConflict(
+        'POSTED_TRANSACTION_REQUIRES_REVERSAL',
+        'POSTED transactions require the reversal workflow and cannot be directly voided.',
+      );
+    }
+
+    if (existing.status === TransactionStatus.VOIDED) {
+      throw reversalConflict('TRANSACTION_ALREADY_VOIDED', 'Transaction is already VOIDED.');
+    }
 
     const transaction = await this.prisma.transaction.update({
       data: { status: TransactionStatus.VOIDED },

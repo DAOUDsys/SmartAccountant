@@ -136,6 +136,9 @@ function transaction(
     transactionDate: now,
     type: TransactionType.SALE,
     updatedAt: now,
+    voidReason: null,
+    voidedAt: null,
+    voidedById: null,
   };
 
   return { ...base, ...overrides };

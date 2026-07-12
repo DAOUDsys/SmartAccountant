@@ -1,7 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TransactionStatus, TransactionType } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { describe, expect, it, vi } from 'vitest';
+import { getReversalErrorCode } from '../reversals/reversal.errors';
 import { TransactionsService } from './transactions.service';
 
 const now = new Date('2026-07-10T10:00:00.000Z');
@@ -231,5 +232,51 @@ describe('TransactionsService', () => {
       where: { id: 'transaction_1' },
     });
     expect(result.status).toBe(TransactionStatus.VOIDED);
+  });
+
+  it('rejects direct void for POSTED transactions and leaves status unchanged', async () => {
+    const prisma = {
+      transaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...transaction,
+          status: TransactionStatus.POSTED,
+        }),
+        update: vi.fn(),
+      },
+    };
+    const service = new TransactionsService(prisma as never);
+
+    try {
+      await service.voidTransaction('business_1', 'transaction_1');
+      throw new Error('Expected POSTED void to fail.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(getReversalErrorCode(error)).toBe('POSTED_TRANSACTION_REQUIRES_REVERSAL');
+    }
+
+    expect(prisma.transaction.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects repeated void for already VOIDED transactions', async () => {
+    const prisma = {
+      transaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...transaction,
+          status: TransactionStatus.VOIDED,
+        }),
+        update: vi.fn(),
+      },
+    };
+    const service = new TransactionsService(prisma as never);
+
+    try {
+      await service.voidTransaction('business_1', 'transaction_1');
+      throw new Error('Expected repeated VOIDED cancellation to fail.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(getReversalErrorCode(error)).toBe('TRANSACTION_ALREADY_VOIDED');
+    }
+
+    expect(prisma.transaction.update).not.toHaveBeenCalled();
   });
 });
