@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  AuditActorType,
+  AuditOutcome,
   JournalEntryStatus,
   Prisma,
   TransactionStatus,
@@ -7,6 +9,13 @@ import {
   type TransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import {
+  AUDIT_EVENTS,
+  AuditLogService,
+  fingerprintIdempotencyKey,
+  mapAccountingAuditSource,
+  type AccountingAuditContext,
+} from '../audit';
 import { validateJournalLinesBalanced } from '../journals/validators/journal-balancing';
 import { ReversalSource, type ReverseTransactionDto } from './dto/reverse-transaction.dto';
 import { reversalConflict, reversalNotFound } from './reversal.errors';
@@ -27,13 +36,17 @@ type PrismaClientLike = Prisma.TransactionClient | PrismaService;
 
 @Injectable()
 export class ReversalService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditLogService) private readonly auditLogService: AuditLogService,
+  ) {}
 
   async reverseTransaction(
     businessId: string,
     transactionId: string,
     userId: string,
     dto: ReverseTransactionDto,
+    auditContext: AccountingAuditContext = { actorUserId: userId, transportSource: 'API' },
   ): Promise<ReverseTransactionResponse> {
     const reason = requireReversalReason(dto.reason);
     const reversalDate = requireReversalDate(dto.reversalDate);
@@ -149,6 +162,19 @@ export class ReversalService {
             );
           }
 
+          await this.auditReversalSucceeded(
+            tx,
+            businessId,
+            transaction,
+            originalJournal,
+            reversalJournal,
+            idempotencyKey,
+            source,
+            reason,
+            reversalDate,
+            auditContext,
+          );
+
           return this.toReverseResponse(
             reversalJournal,
             originalJournal.id,
@@ -197,6 +223,55 @@ export class ReversalService {
     }
   }
 
+  private async auditReversalSucceeded(
+    prisma: Prisma.TransactionClient,
+    businessId: string,
+    transaction: Transaction,
+    originalJournal: OriginalJournalEntryForReversal,
+    reversalJournal: ReversalJournalEntryForResponse,
+    idempotencyKey: string,
+    operationSource: ReversalSource,
+    reason: string,
+    reversalDate: string,
+    auditContext: AccountingAuditContext,
+  ) {
+    const totals = validateJournalLinesBalanced(reversalJournal.lines);
+
+    await this.auditLogService.createEvent(
+      {
+        actorType: AuditActorType.USER,
+        actorUserId: auditContext.actorUserId,
+        businessId,
+        correlationId: auditContext.correlationId,
+        entityId: transaction.id,
+        entityType: 'TRANSACTION',
+        eventType: AUDIT_EVENTS.TRANSACTION_REVERSAL_SUCCEEDED,
+        ipAddress: auditContext.ipAddress,
+        metadata: {
+          idempotencyKeyFingerprint: fingerprintIdempotencyKey(idempotencyKey),
+          lineCount: reversalJournal.lines.length,
+          operationSource,
+          originalJournalEntryId: originalJournal.id,
+          originalJournalStatusAfter: JournalEntryStatus.REVERSED,
+          originalJournalStatusBefore: originalJournal.status,
+          reversalDate: new Date(reversalDate).toISOString(),
+          reversalJournalEntryId: reversalJournal.id,
+          totalCredit: totals.totalCredit,
+          totalDebit: totals.totalDebit,
+          transactionStatusAfter: TransactionStatus.VOIDED,
+          transactionStatusBefore: transaction.status,
+        },
+        outcome: AuditOutcome.SUCCESS,
+        reason,
+        relatedEntityId: reversalJournal.id,
+        relatedEntityType: 'JOURNAL_ENTRY',
+        requestId: auditContext.requestId,
+        source: mapAccountingAuditSource(operationSource, auditContext),
+        userAgent: auditContext.userAgent,
+      },
+      prisma,
+    );
+  }
   private async returnIdempotentReversal(
     reversalJournal: ReversalJournalEntryForResponse,
     transactionId: string,

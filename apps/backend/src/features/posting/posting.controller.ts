@@ -1,4 +1,6 @@
 import { Body, Controller, Inject, Param, Post, UseGuards } from '@nestjs/common';
+import { buildAccountingAuditContext, RequestContext } from '../audit';
+import type { BackendRequestContext } from '../audit';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
@@ -21,6 +23,7 @@ export class PostingController {
     @Param('transactionId') transactionId: string,
     @CurrentUser() user: AuthenticatedUser,
     @CurrentBusiness() context: CurrentBusinessContext,
+    @RequestContext() requestContext: BackendRequestContext | undefined,
     @Body() dto: PostTransactionDto,
   ) {
     return this.postingService.postTransaction(
@@ -29,6 +32,14 @@ export class PostingController {
       user.userId,
       context.membership.role,
       dto,
+      buildAccountingAuditContext({
+        actorUserId: user.userId,
+        correlationId: requestContext?.correlationId,
+        ipAddress: requestContext?.ipAddress,
+        requestId: requestContext?.requestId,
+        transportSource: requestContext?.source,
+        userAgent: requestContext?.userAgent,
+      }),
     );
   }
 }

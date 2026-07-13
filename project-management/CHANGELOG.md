@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.1.26 - 2026-07-13
+
+### Added
+
+- Added mandatory `TRANSACTION_POST_SUCCEEDED` audit writes inside successful posting transactions.
+- Added mandatory `TRANSACTION_REVERSAL_SUCCEEDED` audit writes inside successful Serializable reversal transactions.
+- Added mandatory `TRANSACTION_DRAFT_VOIDED` audit writes inside successful DRAFT cancellation transactions.
+- Added trusted internal accounting audit context mapping from authenticated user and request/correlation middleware.
+- Added safe accounting audit source mapping for MANUAL/API/MOBILE, SYSTEM_RETRY, and IMPORT.
+- Added focused unit assertions that posting, reversal, and DRAFT void paths call `AuditLogService.createEvent` with safe event metadata.
+
+### Changed
+
+- Posting, reversal, and DRAFT cancellation now treat success audit writes as mandatory transactional work rather than best-effort logging.
+- DRAFT cancellation now sets void metadata while preserving direct POSTED void rejection.
+- Audit metadata allowlists now include posting/reversal date and original journal status transition fields required by accounting success events.
+
+### Verified
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed with 26 files and 244 tests.
+- `npm run prisma:validate` passed with the local development `DATABASE_URL`.
+- `npm run prisma:generate` passed.
+
+### Blocked Verification
+
+- Docker Desktop/PostgreSQL is unavailable on this workstation. `docker compose up -d postgres` failed because the Docker Desktop Linux engine pipe was not available.
+- Prisma migration status could load the schema but could not complete database inspection against `localhost:5432`.
+- Live smoke and direct PostgreSQL inspection remain pending until Docker/PostgreSQL is restored.
+
+### Boundary Notes
+
+- No Prisma migration was added.
+- No failed/denied audit events, authentication audit events, CRUD/membership/configuration audit events, public audit-write endpoints, accounting periods, inventory/COGS, approvals, AI orchestration, reports, PDFs, dashboards, chat persistence, or mobile audit UI were added.
+- Raw idempotency keys and secrets are not stored; only idempotency-key fingerprints are included in success audit metadata.
+
+### Status
+
+- Atomic Accounting Success Audit Integration is code-complete and partially approved pending live DB smoke and direct database inspection.
+
 ## 0.1.25 - 2026-07-12
 
 ### Added

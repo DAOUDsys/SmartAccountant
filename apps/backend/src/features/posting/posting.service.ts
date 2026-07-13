@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import {
   AccountMappingKey,
+  AuditActorType,
+  AuditOutcome,
   JournalEntryStatus,
   Prisma,
   TransactionStatus,
@@ -15,6 +17,13 @@ import {
 } from '@prisma/client';
 import type { BusinessRole, Prisma as PrismaTypes } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import {
+  AUDIT_EVENTS,
+  AuditLogService,
+  fingerprintIdempotencyKey,
+  mapAccountingAuditSource,
+  type AccountingAuditContext,
+} from '../audit';
 import {
   calculateJournalTotals,
   validateJournalLinesBalanced,
@@ -63,7 +72,10 @@ const supportedPostingTypesMessage =
 
 @Injectable()
 export class PostingService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditLogService) private readonly auditLogService: AuditLogService,
+  ) {}
 
   async postTransaction(
     businessId: string,
@@ -71,6 +83,7 @@ export class PostingService {
     userId: string,
     membershipRole: BusinessRole,
     dto: PostTransactionDto,
+    auditContext: AccountingAuditContext = { actorUserId: userId, transportSource: 'API' },
   ): Promise<PostTransactionResponse> {
     const idempotencyKey = dto.idempotencyKey?.trim();
 
@@ -128,6 +141,7 @@ export class PostingService {
             idempotencyKey,
             transaction,
             dto,
+            auditContext,
           );
         }
 
@@ -170,6 +184,16 @@ export class PostingService {
           data: { status: TransactionStatus.POSTED },
           where: { id: transaction.id },
         });
+
+        await this.auditPostSucceeded(
+          tx,
+          businessId,
+          transaction,
+          journalEntry,
+          idempotencyKey,
+          dto.source,
+          auditContext,
+        );
 
         return this.toPostResponse(journalEntry, builtJournal.warnings, transaction.type);
       });
@@ -307,6 +331,7 @@ export class PostingService {
     idempotencyKey: string,
     transaction: TransactionIntentForPreview,
     dto: PostTransactionDto,
+    auditContext: AccountingAuditContext = { actorUserId: userId, transportSource: 'API' },
   ): Promise<PostTransactionResponse> {
     const headerErrors = validateAdjustmentHeader({
       description: transaction.description,
@@ -371,6 +396,16 @@ export class PostingService {
       where: { id: transaction.id },
     });
 
+    await this.auditPostSucceeded(
+      prisma,
+      businessId,
+      transaction,
+      journalEntry,
+      idempotencyKey,
+      dto.source,
+      auditContext,
+    );
+
     return this.toPostResponse(
       journalEntry,
       builtAdjustment.warnings.map((warning) => warning.message),
@@ -378,6 +413,50 @@ export class PostingService {
     );
   }
 
+  private async auditPostSucceeded(
+    prisma: PrismaTypes.TransactionClient,
+    businessId: string,
+    transaction: TransactionIntentForPreview,
+    journalEntry: PostedJournalEntryWithLines,
+    idempotencyKey: string,
+    operationSource: PostTransactionDto['source'],
+    auditContext: AccountingAuditContext,
+  ) {
+    const totals = calculateJournalTotals(journalEntry.lines);
+
+    await this.auditLogService.createEvent(
+      {
+        actorType: AuditActorType.USER,
+        actorUserId: auditContext.actorUserId,
+        businessId,
+        correlationId: auditContext.correlationId,
+        entityId: transaction.id,
+        entityType: 'TRANSACTION',
+        eventType: AUDIT_EVENTS.TRANSACTION_POST_SUCCEEDED,
+        ipAddress: auditContext.ipAddress,
+        metadata: {
+          currency: transaction.currency,
+          idempotencyKeyFingerprint: fingerprintIdempotencyKey(idempotencyKey),
+          journalEntryId: journalEntry.id,
+          lineCount: journalEntry.lines.length,
+          operationSource: operationSource ?? 'MANUAL',
+          postingDate: journalEntry.postingDate.toISOString(),
+          totalCredit: totals.totalCredit,
+          totalDebit: totals.totalDebit,
+          transactionStatusAfter: TransactionStatus.POSTED,
+          transactionStatusBefore: transaction.status,
+          transactionType: transaction.type,
+        },
+        outcome: AuditOutcome.SUCCESS,
+        relatedEntityId: journalEntry.id,
+        relatedEntityType: 'JOURNAL_ENTRY',
+        requestId: auditContext.requestId,
+        source: mapAccountingAuditSource(operationSource, auditContext),
+        userAgent: auditContext.userAgent,
+      },
+      prisma,
+    );
+  }
   private async validateRelatedRecordsBelongToBusiness(
     prisma: PrismaTypes.TransactionClient,
     businessId: string,

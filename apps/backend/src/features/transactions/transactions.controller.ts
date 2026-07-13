@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { buildAccountingAuditContext, RequestContext } from '../audit';
+import type { BackendRequestContext } from '../audit';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
@@ -56,7 +58,21 @@ export class TransactionsController {
   voidTransaction(
     @Param('businessId') businessId: string,
     @Param('transactionId') transactionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @RequestContext() requestContext: BackendRequestContext | undefined,
   ) {
-    return this.transactionsService.voidTransaction(businessId, transactionId);
+    return this.transactionsService.voidTransaction(
+      businessId,
+      transactionId,
+      user.userId,
+      buildAccountingAuditContext({
+        actorUserId: user.userId,
+        correlationId: requestContext?.correlationId,
+        ipAddress: requestContext?.ipAddress,
+        requestId: requestContext?.requestId,
+        transportSource: requestContext?.source,
+        userAgent: requestContext?.userAgent,
+      }),
+    );
   }
 }

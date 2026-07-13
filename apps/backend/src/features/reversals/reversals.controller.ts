@@ -1,4 +1,6 @@
 import { Body, Controller, Inject, Param, Post, UseGuards } from '@nestjs/common';
+import { buildAccountingAuditContext, RequestContext } from '../audit';
+import type { BackendRequestContext } from '../audit';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
@@ -39,8 +41,22 @@ export class ReversalsController {
     @Param('businessId') businessId: string,
     @Param('transactionId') transactionId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @RequestContext() requestContext: BackendRequestContext | undefined,
     @Body() dto: ReverseTransactionDto,
   ) {
-    return this.reversalService.reverseTransaction(businessId, transactionId, user.userId, dto);
+    return this.reversalService.reverseTransaction(
+      businessId,
+      transactionId,
+      user.userId,
+      dto,
+      buildAccountingAuditContext({
+        actorUserId: user.userId,
+        correlationId: requestContext?.correlationId,
+        ipAddress: requestContext?.ipAddress,
+        requestId: requestContext?.requestId,
+        transportSource: requestContext?.source,
+        userAgent: requestContext?.userAgent,
+      }),
+    );
   }
 }

@@ -1,5 +1,32 @@
 # Tasks
 
+## Latest Partial Approval - Atomic Accounting Success Audit Integration
+
+Code-complete and locally validated:
+
+- Integrated `TRANSACTION_POST_SUCCEEDED` into successful transaction posting for all currently supported posting types, including stored-line `ADJUSTMENT`.
+- Integrated `TRANSACTION_REVERSAL_SUCCEEDED` into successful financial reversal inside the existing Serializable reversal transaction.
+- Integrated `TRANSACTION_DRAFT_VOIDED` into DRAFT transaction cancellation with void metadata.
+- Routed trusted actor/request/correlation/IP/user-agent context from controllers into accounting services without accepting audit context from request bodies.
+- Used `AuditLogService.createEvent` with the active Prisma transaction client; no direct `prisma.auditLog.create` calls or public audit-write endpoints were added.
+- Stored safe allowlisted metadata and idempotency-key fingerprints only; raw idempotency keys, request bodies, secrets, tokens, auth headers, cookies, raw errors, Prisma errors, stacks, account objects, and journal line objects remain excluded.
+- Preserved same-key idempotent retry behavior without duplicate success audit events.
+- Preserved direct POSTED void rejection with `POSTED_TRANSACTION_REQUIRES_REVERSAL`.
+- Verified `npm run lint`, `npm run build`, `npm run test` (26 files, 244 tests), `npm run prisma:validate`, and `npm run prisma:generate` pass.
+
+Pending before full approval:
+
+- Restore Docker Desktop/PostgreSQL on the workstation.
+- Re-run `docker compose up -d postgres` and Prisma migration status.
+- Run live smoke for posting, idempotent retry, ADJUSTMENT posting, reversal, reversal retry, DRAFT cancellation, rejected POSTED direct void, audit read roles, cross-tenant denial, request/correlation persistence, unchanged product quantity, and unchanged original reversal lines.
+- Directly inspect PostgreSQL for one success audit per new successful action, no duplicate success events, correct business/actor/related IDs, no raw idempotency keys, allowlisted metadata, and no partial accounting/audit rows.
+
+Known limitations intentionally unchanged:
+
+- Failed/denied audit events are not integrated.
+- Posting/reversal attempt and idempotent-retry audit events are not persisted separately.
+- Authentication, CRUD, membership, configuration, AI, mobile audit UI, retention/archival, immutable DB trigger, hash chaining, external write-once archive, accounting periods, inventory/COGS, approvals, reports, PDFs, dashboards, and chat persistence remain future work.
+
 ## Done
 
 - Initialize `finance-ai` monorepo.

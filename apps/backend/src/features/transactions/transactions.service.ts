@@ -1,6 +1,18 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { TransactionStatus, type Transaction, type TransactionLine } from '@prisma/client';
+import {
+  AuditActorType,
+  AuditOutcome,
+  TransactionStatus,
+  type Transaction,
+  type TransactionLine,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import {
+  AUDIT_EVENTS,
+  AuditLogService,
+  mapAccountingAuditSource,
+  type AccountingAuditContext,
+} from '../audit';
 import { reversalConflict } from '../reversals/reversal.errors';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
 import type { TransactionLineDto } from './dto/transaction-line.dto';
@@ -43,7 +55,10 @@ export interface TransactionResponse {
 
 @Injectable()
 export class TransactionsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AuditLogService) private readonly auditLogService: AuditLogService,
+  ) {}
 
   async list(businessId: string): Promise<TransactionResponse[]> {
     const transactions = await this.prisma.transaction.findMany({
@@ -142,24 +157,71 @@ export class TransactionsService {
     return this.toResponse(transaction);
   }
 
-  async voidTransaction(businessId: string, transactionId: string): Promise<TransactionResponse> {
-    const existing = await this.findActiveTransaction(businessId, transactionId);
+  async voidTransaction(
+    businessId: string,
+    transactionId: string,
+    userId: string,
+    auditContext: AccountingAuditContext,
+  ): Promise<TransactionResponse> {
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.transaction.findFirst({
+        include: { lines: true },
+        where: {
+          businessId,
+          deletedAt: null,
+          id: transactionId,
+        },
+      });
 
-    if (existing.status === TransactionStatus.POSTED) {
-      throw reversalConflict(
-        'POSTED_TRANSACTION_REQUIRES_REVERSAL',
-        'POSTED transactions require the reversal workflow and cannot be directly voided.',
+      if (!existing) {
+        throw new NotFoundException('Transaction not found.');
+      }
+
+      if (existing.status === TransactionStatus.POSTED) {
+        throw reversalConflict(
+          'POSTED_TRANSACTION_REQUIRES_REVERSAL',
+          'POSTED transactions require the reversal workflow and cannot be directly voided.',
+        );
+      }
+
+      if (existing.status === TransactionStatus.VOIDED) {
+        throw reversalConflict('TRANSACTION_ALREADY_VOIDED', 'Transaction is already VOIDED.');
+      }
+
+      const updated = await tx.transaction.update({
+        data: {
+          status: TransactionStatus.VOIDED,
+          voidedAt: new Date(),
+          voidedById: userId,
+        },
+        include: { lines: true },
+        where: { id: transactionId },
+      });
+
+      await this.auditLogService.createEvent(
+        {
+          actorType: AuditActorType.USER,
+          actorUserId: auditContext.actorUserId,
+          businessId,
+          correlationId: auditContext.correlationId,
+          entityId: existing.id,
+          entityType: 'TRANSACTION',
+          eventType: AUDIT_EVENTS.TRANSACTION_DRAFT_VOIDED,
+          ipAddress: auditContext.ipAddress,
+          metadata: {
+            transactionStatusAfter: TransactionStatus.VOIDED,
+            transactionStatusBefore: existing.status,
+            transactionType: existing.type,
+          },
+          outcome: AuditOutcome.SUCCESS,
+          requestId: auditContext.requestId,
+          source: mapAccountingAuditSource('MANUAL', auditContext),
+          userAgent: auditContext.userAgent,
+        },
+        tx,
       );
-    }
 
-    if (existing.status === TransactionStatus.VOIDED) {
-      throw reversalConflict('TRANSACTION_ALREADY_VOIDED', 'Transaction is already VOIDED.');
-    }
-
-    const transaction = await this.prisma.transaction.update({
-      data: { status: TransactionStatus.VOIDED },
-      include: { lines: true },
-      where: { id: transactionId },
+      return updated;
     });
 
     return this.toResponse(transaction);

@@ -6,6 +6,30 @@ import { getReversalErrorCode } from '../reversals/reversal.errors';
 import { TransactionsService } from './transactions.service';
 
 const now = new Date('2026-07-10T10:00:00.000Z');
+const auditContext = {
+  actorUserId: 'user_1',
+  correlationId: 'corr_test',
+  ipAddress: '127.0.0.1',
+  requestId: 'req_test',
+  transportSource: 'API' as const,
+  userAgent: 'Vitest',
+};
+
+function createAuditLogServiceMock(options: { fail?: boolean } = {}) {
+  return {
+    createEvent: vi.fn(() => {
+      if (options.fail) {
+        return Promise.reject(new Error('forced audit write failure'));
+      }
+
+      return Promise.resolve({ id: 'audit_created' });
+    }),
+  };
+}
+
+function createTransactionsService(prisma: unknown, auditLogService = createAuditLogServiceMock()) {
+  return new TransactionsService(prisma as never, auditLogService as never);
+}
 const transaction = {
   businessId: 'business_1',
   createdAt: now,
@@ -53,7 +77,7 @@ describe('TransactionsService', () => {
         create: vi.fn().mockResolvedValue(transaction),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const service = createTransactionsService(prisma as never);
 
     await service.create('business_1', 'user_1', {
       currency: 'usd',
@@ -124,7 +148,7 @@ describe('TransactionsService', () => {
         findFirst: vi.fn().mockResolvedValue(null),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const service = createTransactionsService(prisma as never);
 
     await expect(
       service.create('business_1', 'user_1', {
@@ -146,7 +170,7 @@ describe('TransactionsService', () => {
         findFirst: vi.fn().mockResolvedValue(null),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const service = createTransactionsService(prisma as never);
 
     await expect(
       service.create('business_1', 'user_1', {
@@ -171,7 +195,7 @@ describe('TransactionsService', () => {
         findFirst: vi.fn(),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const service = createTransactionsService(prisma as never);
 
     await expect(
       service.create('business_1', 'user_1', {
@@ -198,7 +222,7 @@ describe('TransactionsService', () => {
         findMany: vi.fn().mockResolvedValue([transaction]),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const service = createTransactionsService(prisma as never);
 
     await service.list('business_1');
 
@@ -222,15 +246,38 @@ describe('TransactionsService', () => {
         }),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const auditLogService = createAuditLogServiceMock();
+    const prismaWithTransaction = {
+      ...prisma,
+      $transaction: vi.fn((callback) => callback(prisma)),
+    };
+    const service = createTransactionsService(prismaWithTransaction as never, auditLogService);
 
-    const result = await service.voidTransaction('business_1', 'transaction_1');
+    const result = await service.voidTransaction(
+      'business_1',
+      'transaction_1',
+      'user_1',
+      auditContext,
+    );
 
     expect(prisma.transaction.update).toHaveBeenCalledWith({
-      data: { status: TransactionStatus.VOIDED },
+      data: {
+        status: TransactionStatus.VOIDED,
+        voidedAt: expect.any(Date),
+        voidedById: 'user_1',
+      },
       include: { lines: true },
       where: { id: 'transaction_1' },
     });
+    expect(auditLogService.createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 'user_1',
+        businessId: 'business_1',
+        entityId: 'transaction_1',
+        eventType: 'TRANSACTION_DRAFT_VOIDED',
+      }),
+      prisma,
+    );
     expect(result.status).toBe(TransactionStatus.VOIDED);
   });
 
@@ -244,10 +291,14 @@ describe('TransactionsService', () => {
         update: vi.fn(),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const prismaWithTransaction = {
+      ...prisma,
+      $transaction: vi.fn((callback) => callback(prisma)),
+    };
+    const service = createTransactionsService(prismaWithTransaction as never);
 
     try {
-      await service.voidTransaction('business_1', 'transaction_1');
+      await service.voidTransaction('business_1', 'transaction_1', 'user_1', auditContext);
       throw new Error('Expected POSTED void to fail.');
     } catch (error) {
       expect(error).toBeInstanceOf(ConflictException);
@@ -267,10 +318,14 @@ describe('TransactionsService', () => {
         update: vi.fn(),
       },
     };
-    const service = new TransactionsService(prisma as never);
+    const prismaWithTransaction = {
+      ...prisma,
+      $transaction: vi.fn((callback) => callback(prisma)),
+    };
+    const service = createTransactionsService(prismaWithTransaction as never);
 
     try {
-      await service.voidTransaction('business_1', 'transaction_1');
+      await service.voidTransaction('business_1', 'transaction_1', 'user_1', auditContext);
       throw new Error('Expected repeated VOIDED cancellation to fail.');
     } catch (error) {
       expect(error).toBeInstanceOf(ConflictException);

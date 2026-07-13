@@ -21,6 +21,21 @@ import { PostingService } from './posting.service';
 import type { PostedJournalEntryWithLines } from './posting.types';
 
 const now = new Date('2026-07-11T00:00:00.000Z');
+function createAuditLogServiceMock(options: { fail?: boolean } = {}) {
+  return {
+    createEvent: vi.fn(() => {
+      if (options.fail) {
+        return Promise.reject(new Error('forced audit write failure'));
+      }
+
+      return Promise.resolve({ id: 'audit_created' });
+    }),
+  };
+}
+
+function createPostingService(prisma: unknown, auditLogService = createAuditLogServiceMock()) {
+  return new PostingService(prisma as never, auditLogService as never);
+}
 
 const accountSpecs: Record<
   AccountMappingKey,
@@ -368,7 +383,8 @@ function serviceCall(service: PostingService, dto = {}, role: BusinessRole = Bus
 describe('PostingService', () => {
   it('posts a cash SALE with a POSTED JournalEntry and balanced Cash/Sales Revenue lines', async () => {
     const { prisma, tx } = createPrismaMock();
-    const service = new PostingService(prisma as never);
+    const auditLogService = createAuditLogServiceMock();
+    const service = createPostingService(prisma as never, auditLogService);
 
     const result = await serviceCall(service);
 
@@ -397,7 +413,7 @@ describe('PostingService', () => {
     const { prisma } = createPrismaMock({
       transactionValue: transaction({ customerId: 'customer_1' }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -411,7 +427,7 @@ describe('PostingService', () => {
     const { prisma } = createPrismaMock({
       transactionValue: transaction({ type: TransactionType.EXPENSE }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -423,7 +439,7 @@ describe('PostingService', () => {
 
   it('posts PURCHASE variants for inventory/payable and expense/cash', async () => {
     const productLine = { ...transaction().lines[0]!, productId: 'product_1' };
-    const inventoryPurchase = new PostingService(
+    const inventoryPurchase = createPostingService(
       createPrismaMock({
         transactionValue: transaction({
           lines: [productLine],
@@ -432,7 +448,7 @@ describe('PostingService', () => {
         }),
       }).prisma as never,
     );
-    const cashPurchase = new PostingService(
+    const cashPurchase = createPostingService(
       createPrismaMock({
         transactionValue: transaction({ type: TransactionType.PURCHASE }),
       }).prisma as never,
@@ -460,7 +476,7 @@ describe('PostingService', () => {
         type: TransactionType.CUSTOMER_PAYMENT,
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -498,11 +514,11 @@ describe('PostingService', () => {
     });
 
     await expect(
-      serviceCall(new PostingService(missingCustomer.prisma as never)),
+      serviceCall(createPostingService(missingCustomer.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(missingCustomer.tx.journalEntry.create).not.toHaveBeenCalled();
     await expect(
-      serviceCall(new PostingService(crossTenantCustomer.prisma as never)),
+      serviceCall(createPostingService(crossTenantCustomer.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(crossTenantCustomer.tx.journalEntry.create).not.toHaveBeenCalled();
   });
@@ -530,13 +546,13 @@ describe('PostingService', () => {
     });
 
     await expect(
-      serviceCall(new PostingService(missingCash.prisma as never)),
+      serviceCall(createPostingService(missingCash.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      serviceCall(new PostingService(missingReceivable.prisma as never)),
+      serviceCall(createPostingService(missingReceivable.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      serviceCall(new PostingService(wrongReceivableType.prisma as never)),
+      serviceCall(createPostingService(wrongReceivableType.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -547,7 +563,7 @@ describe('PostingService', () => {
         type: TransactionType.SUPPLIER_PAYMENT,
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -575,11 +591,11 @@ describe('PostingService', () => {
     });
 
     await expect(
-      serviceCall(new PostingService(missingSupplier.prisma as never)),
+      serviceCall(createPostingService(missingSupplier.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(missingSupplier.tx.journalEntry.create).not.toHaveBeenCalled();
     await expect(
-      serviceCall(new PostingService(crossTenantSupplier.prisma as never)),
+      serviceCall(createPostingService(crossTenantSupplier.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(crossTenantSupplier.tx.journalEntry.create).not.toHaveBeenCalled();
   });
@@ -607,13 +623,13 @@ describe('PostingService', () => {
     });
 
     await expect(
-      serviceCall(new PostingService(missingPayable.prisma as never)),
+      serviceCall(createPostingService(missingPayable.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      serviceCall(new PostingService(missingCash.prisma as never)),
+      serviceCall(createPostingService(missingCash.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      serviceCall(new PostingService(wrongPayableType.prisma as never)),
+      serviceCall(createPostingService(wrongPayableType.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -627,7 +643,7 @@ describe('PostingService', () => {
         type: TransactionType.ADJUSTMENT,
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -697,7 +713,7 @@ describe('PostingService', () => {
         type: TransactionType.ADJUSTMENT,
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -886,7 +902,7 @@ describe('PostingService', () => {
       adjustmentLines: lines,
       transactionValue,
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.journalEntry.create).not.toHaveBeenCalled();
@@ -915,11 +931,11 @@ describe('PostingService', () => {
       }),
     });
 
-    await expect(serviceCall(new PostingService(voided.prisma as never))).rejects.toBeInstanceOf(
+    await expect(serviceCall(createPostingService(voided.prisma as never))).rejects.toBeInstanceOf(
       ConflictException,
     );
     await expect(
-      serviceCall(new PostingService(historicalPosted.prisma as never)),
+      serviceCall(createPostingService(historicalPosted.prisma as never)),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(voided.tx.journalEntry.create).not.toHaveBeenCalled();
     expect(historicalPosted.tx.journalEntry.create).not.toHaveBeenCalled();
@@ -941,7 +957,7 @@ describe('PostingService', () => {
       });
 
       await expect(
-        serviceCall(new PostingService(prisma as never), {}, role),
+        serviceCall(createPostingService(prisma as never), {}, role),
       ).resolves.toMatchObject({
         transactionType: TransactionType.ADJUSTMENT,
       });
@@ -959,7 +975,7 @@ describe('PostingService', () => {
       });
 
       await expect(
-        serviceCall(new PostingService(prisma as never), {}, role),
+        serviceCall(createPostingService(prisma as never), {}, role),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(tx.journalEntry.create).not.toHaveBeenCalled();
     }
@@ -1025,16 +1041,16 @@ describe('PostingService', () => {
       }),
     });
 
-    await expect(serviceCall(new PostingService(retry.prisma as never))).resolves.toMatchObject({
+    await expect(serviceCall(createPostingService(retry.prisma as never))).resolves.toMatchObject({
       journalEntryId: existing.id,
       transactionType: TransactionType.ADJUSTMENT,
     });
     expect(retry.tx.journalEntry.create).not.toHaveBeenCalled();
     await expect(
-      serviceCall(new PostingService(sameKeyDifferentTransaction.prisma as never)),
+      serviceCall(createPostingService(sameKeyDifferentTransaction.prisma as never)),
     ).rejects.toBeInstanceOf(ConflictException);
     await expect(
-      serviceCall(new PostingService(differentKeyAfterPosting.prisma as never), {
+      serviceCall(createPostingService(differentKeyAfterPosting.prisma as never), {
         idempotencyKey: 'different-key',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -1051,7 +1067,7 @@ describe('PostingService', () => {
         type: TransactionType.ADJUSTMENT,
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toThrow('forced journal create failure');
 
@@ -1095,21 +1111,21 @@ describe('PostingService', () => {
       }),
     });
 
-    await expect(serviceCall(new PostingService(retry.prisma as never))).resolves.toMatchObject({
+    await expect(serviceCall(createPostingService(retry.prisma as never))).resolves.toMatchObject({
       journalEntryId: existing.id,
       totalCredit: '200.00',
       totalDebit: '200.00',
     });
     expect(retry.tx.journalEntry.create).not.toHaveBeenCalled();
     await expect(
-      serviceCall(new PostingService(duplicate.prisma as never), { idempotencyKey: 'new-key' }),
+      serviceCall(createPostingService(duplicate.prisma as never), { idempotencyKey: 'new-key' }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(duplicate.tx.journalEntry.create).not.toHaveBeenCalled();
   });
 
   it('updates Transaction.status to POSTED only after journal creation', async () => {
     const { prisma, tx } = createPrismaMock();
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await serviceCall(service);
 
@@ -1125,7 +1141,7 @@ describe('PostingService', () => {
 
   it('does not update Transaction.status when journal creation fails', async () => {
     const { prisma, tx } = createPrismaMock({ failJournalCreate: true });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toThrow('forced journal create failure');
 
@@ -1135,7 +1151,7 @@ describe('PostingService', () => {
   it('retries the same idempotency key by returning the existing journal result', async () => {
     const existing = journalEntry();
     const { prisma, tx } = createPrismaMock({ existingByKey: existing });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     const result = await serviceCall(service);
 
@@ -1147,7 +1163,7 @@ describe('PostingService', () => {
   it('rejects the same idempotency key for a different transaction', async () => {
     const existing = journalEntry({ sourceTransactionId: 'transaction_2' });
     const { prisma } = createPrismaMock({ existingByKey: existing });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toBeInstanceOf(ConflictException);
   });
@@ -1157,7 +1173,7 @@ describe('PostingService', () => {
       existingForTransaction: journalEntry({ idempotencyKey: 'other-key' }),
       transactionValue: transaction({ status: TransactionStatus.POSTED }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service, { idempotencyKey: 'new-key' })).rejects.toBeInstanceOf(
       ConflictException,
@@ -1167,7 +1183,7 @@ describe('PostingService', () => {
 
   it('requires an idempotency key', async () => {
     const { prisma } = createPrismaMock();
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(
       service.postTransaction('business_1', 'transaction_1', 'user_1', BusinessRole.OWNER, {
@@ -1191,27 +1207,29 @@ describe('PostingService', () => {
     });
 
     await expect(
-      serviceCall(new PostingService(missingMapping.prisma as never)),
+      serviceCall(createPostingService(missingMapping.prisma as never)),
     ).rejects.toBeInstanceOf(BadRequestException);
-    await expect(serviceCall(new PostingService(wrongType.prisma as never))).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    await expect(serviceCall(new PostingService(inactive.prisma as never))).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    await expect(serviceCall(new PostingService(deleted.prisma as never))).rejects.toBeInstanceOf(
+    await expect(
+      serviceCall(createPostingService(wrongType.prisma as never)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      serviceCall(createPostingService(inactive.prisma as never)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(serviceCall(createPostingService(deleted.prisma as never))).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
 
   it('denies cross-tenant transaction guesses and related customer/supplier/product references', async () => {
     await expect(
-      serviceCall(new PostingService(createPrismaMock({ transactionValue: null }).prisma as never)),
+      serviceCall(
+        createPostingService(createPrismaMock({ transactionValue: null }).prisma as never),
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
 
     await expect(
       serviceCall(
-        new PostingService(
+        createPostingService(
           createPrismaMock({
             customerFound: false,
             transactionValue: transaction({ customerId: 'other_customer' }),
@@ -1222,7 +1240,7 @@ describe('PostingService', () => {
 
     await expect(
       serviceCall(
-        new PostingService(
+        createPostingService(
           createPrismaMock({
             supplierFound: false,
             transactionValue: transaction({
@@ -1236,7 +1254,7 @@ describe('PostingService', () => {
 
     await expect(
       serviceCall(
-        new PostingService(
+        createPostingService(
           createPrismaMock({
             productCount: 0,
             transactionValue: transaction({
@@ -1252,7 +1270,7 @@ describe('PostingService', () => {
     const { prisma, tx } = createPrismaMock({
       transactionValue: transaction({ type: TransactionType.ADJUSTMENT }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.journalEntry.create).not.toHaveBeenCalled();
@@ -1265,7 +1283,7 @@ describe('PostingService', () => {
         lines: [{ ...transaction().lines[0]!, productId: 'product_1' }],
       }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await serviceCall(service);
 
@@ -1278,7 +1296,7 @@ describe('PostingService', () => {
     const { prisma, tx } = createPrismaMock({
       transactionValue: transaction({ status: TransactionStatus.POSTED }),
     });
-    const service = new PostingService(prisma as never);
+    const service = createPostingService(prisma as never);
 
     await expect(serviceCall(service)).rejects.toBeInstanceOf(ConflictException);
     expect(tx.journalEntry.create).not.toHaveBeenCalled();

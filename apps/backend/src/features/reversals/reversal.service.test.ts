@@ -7,6 +7,21 @@ import { ReversalService } from './reversal.service';
 
 const now = new Date('2026-07-11T10:00:00.000Z');
 const reversedAt = new Date('2026-07-11T12:00:00.000Z');
+function createAuditLogServiceMock(options: { fail?: boolean } = {}) {
+  return {
+    createEvent: vi.fn(() => {
+      if (options.fail) {
+        return Promise.reject(new Error('forced audit write failure'));
+      }
+
+      return Promise.resolve({ id: 'audit_created' });
+    }),
+  };
+}
+
+function createReversalService(prisma: unknown, auditLogService = createAuditLogServiceMock()) {
+  return new ReversalService(prisma as never, auditLogService as never);
+}
 
 const cashAccount = {
   businessId: 'business_1',
@@ -293,13 +308,34 @@ describe('ReversalService', () => {
     TransactionType.ADJUSTMENT,
   ])('atomically reverses a posted %s transaction from original journal lines', async (type) => {
     const { prisma, tx } = createPrisma({ transactionType: type });
-    const service = new ReversalService(prisma as never);
+    const auditLogService = createAuditLogServiceMock();
+    const service = createReversalService(prisma as never, auditLogService);
 
     const result = await service.reverseTransaction('business_1', 'transaction_1', 'user_1', {
       ...reverseDto,
       idempotencyKey: `reverse-${type}`,
     });
 
+    expect(auditLogService.createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 'user_1',
+        businessId: 'business_1',
+        entityId: 'transaction_1',
+        eventType: 'TRANSACTION_REVERSAL_SUCCEEDED',
+        metadata: expect.objectContaining({
+          idempotencyKeyFingerprint: expect.any(String),
+          originalJournalEntryId: 'journal_original',
+          originalJournalStatusAfter: JournalEntryStatus.REVERSED,
+          originalJournalStatusBefore: JournalEntryStatus.POSTED,
+          reversalJournalEntryId: 'journal_reversal',
+          transactionStatusAfter: TransactionStatus.VOIDED,
+          transactionStatusBefore: TransactionStatus.POSTED,
+        }),
+        relatedEntityId: 'journal_reversal',
+        relatedEntityType: 'JOURNAL_ENTRY',
+      }),
+      tx,
+    );
     expect(result.transactionType).toBe(type);
     expect(result.transactionStatus).toBe('VOIDED');
     expect(result.originalJournalStatus).toBe('REVERSED');
@@ -358,7 +394,7 @@ describe('ReversalService', () => {
   });
 
   it('requires reason and idempotency key', async () => {
-    const service = new ReversalService(createPrisma().prisma as never);
+    const service = createReversalService(createPrisma().prisma as never);
 
     await expectReversalCode(
       service.reverseTransaction('business_1', 'transaction_1', 'user_1', {
@@ -380,7 +416,7 @@ describe('ReversalService', () => {
   it.each([TransactionStatus.DRAFT, TransactionStatus.VOIDED])(
     'rejects %s transactions unless already reversed by the same key',
     async (status) => {
-      const service = new ReversalService(
+      const service = createReversalService(
         createPrisma({ transactionStatus: status }).prisma as never,
       );
 
@@ -393,7 +429,7 @@ describe('ReversalService', () => {
 
   it('fails safely for missing or multiple original journals', async () => {
     await expectReversalCode(
-      new ReversalService(createPrisma({ journals: [] }).prisma as never).reverseTransaction(
+      createReversalService(createPrisma({ journals: [] }).prisma as never).reverseTransaction(
         'business_1',
         'transaction_1',
         'user_1',
@@ -403,7 +439,7 @@ describe('ReversalService', () => {
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ journals: [originalJournal(), originalJournal({ id: 'journal_2' })] })
           .prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
@@ -413,7 +449,7 @@ describe('ReversalService', () => {
 
   it('rejects non-POSTED, reversal, already reversed, and unbalanced original journals', async () => {
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ journals: [originalJournal({ status: JournalEntryStatus.DRAFT })] })
           .prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
@@ -421,7 +457,7 @@ describe('ReversalService', () => {
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ journals: [originalJournal({ reversesJournalEntryId: 'another' })] })
           .prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
@@ -429,7 +465,7 @@ describe('ReversalService', () => {
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({
           journals: [
             originalJournal({
@@ -443,7 +479,7 @@ describe('ReversalService', () => {
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({
           journals: [
             originalJournal({
@@ -461,21 +497,21 @@ describe('ReversalService', () => {
 
   it('returns the same reversal for idempotent retry and rejects mismatched reuse', async () => {
     const existing = reversalJournal();
-    const retry = await new ReversalService(
+    const retry = await createReversalService(
       createPrisma({ existingByKey: existing }).prisma as never,
     ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto);
 
     expect(retry.reversalJournalEntryId).toBe('journal_reversal');
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ existingByKey: existing }).prisma as never,
       ).reverseTransaction('business_1', 'transaction_2', 'user_1', reverseDto),
       'REVERSAL_IDEMPOTENCY_CONFLICT',
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ existingByKey: existing }).prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', {
         ...reverseDto,
@@ -486,7 +522,7 @@ describe('ReversalService', () => {
   });
 
   it('rejects a second key after a completed reversal', async () => {
-    const service = new ReversalService(
+    const service = createReversalService(
       createPrisma({
         journals: [
           originalJournal({
@@ -526,7 +562,7 @@ describe('ReversalService', () => {
       ],
     });
 
-    const result = await new ReversalService(prisma as never).reverseTransaction(
+    const result = await createReversalService(prisma as never).reverseTransaction(
       'business_1',
       'transaction_1',
       'user_1',
@@ -541,14 +577,14 @@ describe('ReversalService', () => {
 
   it('rolls back when original journal or transaction conditional updates fail', async () => {
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ originalUpdateCount: 0 }).prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
       'REVERSAL_CONCURRENT_CONFLICT',
     );
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ transactionUpdateCount: 0 }).prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
       'REVERSAL_CONCURRENT_CONFLICT',
@@ -562,7 +598,7 @@ describe('ReversalService', () => {
     });
 
     await expectReversalCode(
-      new ReversalService(
+      createReversalService(
         createPrisma({ journalCreateError: error }).prisma as never,
       ).reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
       'REVERSAL_ALREADY_COMPLETED',
@@ -571,7 +607,7 @@ describe('ReversalService', () => {
 
   it('preserves atomicity when journal creation fails', async () => {
     const { prisma, tx } = createPrisma({ journalCreateError: new Error('create failed') });
-    const service = new ReversalService(prisma as never);
+    const service = createReversalService(prisma as never);
 
     await expect(
       service.reverseTransaction('business_1', 'transaction_1', 'user_1', reverseDto),
@@ -586,7 +622,7 @@ describe('ReversalService', () => {
     prisma.transaction.findFirst.mockResolvedValue(null);
 
     await expectReversalCode(
-      new ReversalService(prisma as never).reverseTransaction(
+      createReversalService(prisma as never).reverseTransaction(
         'business_1',
         'transaction_from_other_business',
         'user_1',
